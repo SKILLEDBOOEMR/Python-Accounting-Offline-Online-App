@@ -79,7 +79,7 @@ loading_page = Frame(window, background=light_dark)
 tab_list = [login_page,signup_page,accounting_page,bootoption_page,loading_page,signup_initialise_page]
 
 #Font loading
-font_path = path.abspath("monogram.ttf")
+font_path = path.abspath("assets/monogram.ttf")
 windll.gdi32.AddFontResourceW(font_path)
 
 custom_font = 'monogram'
@@ -130,32 +130,32 @@ account_formula = {
 }
 
 
-logo_image = Image.open('logo.png').resize((32,32), Image.LANCZOS)
+logo_image = Image.open('image/logo.png').resize((32,32), Image.LANCZOS)
 logo_photo = ImageTk.PhotoImage(logo_image)
 window.iconphoto(True, logo_photo)
 
-logo_google_image = Image.open('google_logo.png').resize((32,32), Image.LANCZOS)
+logo_google_image = Image.open('image/google_logo.png').resize((32,32), Image.LANCZOS)
 logo_google_photo = ImageTk.PhotoImage(logo_google_image)
 
-logo_github_image = Image.open('github_logo.png').resize((32,32), Image.LANCZOS)
+logo_github_image = Image.open('image/github_logo.png').resize((32,32), Image.LANCZOS)
 logo_github_photo = ImageTk.PhotoImage(logo_github_image)
 
-dashboard_image = Image.open('dashboard.png').resize((14,14), Image.LANCZOS)
+dashboard_image = Image.open('image/dashboard.png').resize((14,14), Image.LANCZOS)
 dashboard_photo = ImageTk.PhotoImage(dashboard_image)
 
-transaction_image = Image.open('transaction.png').resize((14,14), Image.LANCZOS)
+transaction_image = Image.open('image/transaction.png').resize((14,14), Image.LANCZOS)
 transaction_photo = ImageTk.PhotoImage(transaction_image)
 
-budget_image = Image.open('budget.png').resize((14,14), Image.LANCZOS)
+budget_image = Image.open('image/budget.png').resize((14,14), Image.LANCZOS)
 budget_photo = ImageTk.PhotoImage(budget_image)
 
-wallet_image = Image.open('wallet.png').resize((14,14), Image.LANCZOS)
+wallet_image = Image.open('image/wallet.png').resize((14,14), Image.LANCZOS)
 wallet_photo = ImageTk.PhotoImage(wallet_image)
 
-chatgpt_image = Image.open('chatgpt.png').resize((14,14), Image.LANCZOS)
+chatgpt_image = Image.open('image/chatgpt.png').resize((14,14), Image.LANCZOS)
 chatgpt_photo = ImageTk.PhotoImage(chatgpt_image)
 
-setting_image = Image.open('setting.png').resize((14,14), Image.LANCZOS)
+setting_image = Image.open('image/setting.png').resize((14,14), Image.LANCZOS)
 setting_photo = ImageTk.PhotoImage(setting_image)
 
 class API:

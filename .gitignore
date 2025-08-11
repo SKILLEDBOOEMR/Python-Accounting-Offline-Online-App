@@ -1,6 +1,5 @@
 *.env
 *.db
-backend.py
 .sqlite3
 .DS_Store
 Thumbs.db

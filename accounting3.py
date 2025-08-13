@@ -476,6 +476,35 @@ class API:
         temp = cursor.fetchall()
         connect.close()
         return temp
+
+    def offline_add_account(self,type_widget,account_widget,error_msg_widget):
+        types = type_widget.get()
+        account = account_widget.get()
+        print(types,account)
+
+        if types == '' or account in ['\u200BEnter Here','']:
+            error_msg_widget.configure(fg=error_color,text='Please fill in all the Entry Fields')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False,[]
+        
+        connect = sql.connect('database.db')
+        cursor = connect.cursor()
+        try:
+            cursor.execute('INSERT INTO accounts (account,account_type) VALUES (?,?)', [account,types])
+        except Exception as e:
+            connect.close()
+            error_msg_widget.configure(fg=error_color,text='Account Already Exists!')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False, []
+        
+        connect.commit()
+        connect.close()
+        
+        error_msg_widget.configure(fg=success_color,text='Succesfully Added a New Account')
+        window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+        return True, [types,account,0,0]
+        
+
 class GUI:
     def __init__(self):
         #Transaction page add part
@@ -1643,39 +1672,74 @@ def build_accounting_page_transaction(master):
 
     #Command to place the uhh transaction list according to the uhh date :)
 def build_accounting_page_category(master):
+    def reset_button_page():
+        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.unbind('<<TreeviewSelect>>')
+        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.delete(0,END)
+        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.insert(0,'\u200BEnter Here')
+        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(fg=sub_textcolor)
+        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.set('')
+        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(values=[])
+
+        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label2.configure(text='0')
+        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label4.configure(text='0')
     def to_button_page(type_of_command = str in ['add','remove','edit','search']):
-        def treeview_select(lock):
-            print('hello world')
+        def treeview_select(event=None,lock=bool):
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1.pack_forget()
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack_forget()
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3.pack(side='top',fill='both',expand=1)
+            focused = accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.focus()
+            value = accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.item(focused,'values')
+
+            if not value or len(value) < 5:
+                return
+
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.set(value[1])
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.delete(0,END)
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.insert(0,value[2])
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(fg=text_color)
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label2.configure(text=value[3])
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label4.configure(text=value[4])
+
+            if lock:
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='disabled')
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='disabled')
+
         if getattr(state,'is_online') == False:
             accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1.pack_forget()
             if type_of_command == 'add':
+                reset_button_page()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack_forget()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3.pack(side='top',fill='both',expand=1)
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='readonly')
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='normal')
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Add')
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Add', command= lambda: button_command('add'))
 
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(values=state.account_type)
 
             if type_of_command == 'remove':
+                reset_button_page()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3.pack_forget()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack(side='top',fill='both',expand=1)
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.bind('<<TreeviewSelect>>',lambda:treeview_select(lock=True))
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.bind('<<TreeviewSelect>>',lambda event :treeview_select(event=event,lock=True))
 
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='disabled')
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='disabled')
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Remove')
 
             if type_of_command == 'edit':
+                reset_button_page()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3.pack_forget()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack(side='top',fill='both',expand=1)
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.bind('<<TreeviewSelect>>',lambda:treeview_select())
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.bind('<<TreeviewSelect>>',lambda event :treeview_select(event=event,lock=False))
 
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='readonly')
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='normal')
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Edit')
 
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(values=state.account_type)
+
             if type_of_command == 'search':
+                reset_button_page()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack_forget()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3.pack(side='top',fill='both',expand=1)
 
@@ -1688,7 +1752,10 @@ def build_accounting_page_category(master):
     def button_command(type_of_command = str in ['add','remove','edit','search']):
         if getattr(state,'is_online') == False:
             if type_of_command == 'add':
-                print('hello world')
+                status, data = api.offline_add_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
+                if status:
+                    accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values=([len(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children())+1] + data))
+                    to_button_page('add')
 
             if type_of_command == 'remove':
                 print('hello world')
@@ -1754,7 +1821,7 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame2.grid(column=0,row=1,sticky='nsew',columnspan=2)
 
     accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame2, text='', background=sub_lightdark, fg=error_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1.pack(side='top',expand=1,fill='both',padx=3,pady=[3,0])
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1.pack(side='top',fill='both', expand=True,pady=(3,0),padx=3,anchor='w')
 
     #Bottom Frames
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3 = Frame(accountingpage_subframe2_frame3_categorypage_leftframe, background=light_dark,height=316)
@@ -1814,16 +1881,15 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1.grid_rowconfigure([0,1],weight=1)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1.grid_columnconfigure(2,weight=1)
 
-
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_label1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1, text='Type', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_label1.grid(column=0,row=0,sticky='nw',pady=5)
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_label1.grid(column=0,row=0,sticky='nw',pady=5,padx=[3,0])
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_equal1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_equal1.grid(column=1,row=0,sticky='nw',pady=5)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1, background = light_dark, foreground = text_color,font=('monogram',20),state='readonly',justify='left')
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.grid(column=2,row=0,sticky='new',pady=5,padx=[0,5])
 
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_label2 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1, text='Account   ', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_label2.grid(column=0,row=1,sticky='nw',pady=5)
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_label2 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1, text='Account     ', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_label2.grid(column=0,row=1,sticky='nw',pady=5,padx=[3,0])
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_equal2 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_equal2.grid(column=1,row=1,sticky='nw',pady=5)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1 = Entry(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1, background = light_dark, fg = sub_textcolor,font=('monogram',20),disabledbackground=light_dark,disabledforeground=text_color)
@@ -1833,16 +1899,23 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.grid(column=2,row=1,sticky='new',pady=5,padx=[0,5])
     
     #Values LabelFrame
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2 = LabelFrame(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3,background = sub_lightdark,text='Explanation',font=('monogram',20,'bold'),fg=text_color)
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2 = LabelFrame(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3,background = sub_lightdark,text='Data',font=('monogram',20,'bold'),fg=text_color)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2.grid(column=0,row=1,sticky='nsew',padx=[3,0],pady=[0,3])
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2.grid_rowconfigure([0,1],weight=1)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2.grid_columnconfigure(2,weight=1)
 
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2, text=' - Choose the Type in the From First', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label1.grid(column=0,row=0,sticky='nw',pady=5)
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2, text='Entry Count', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label1.grid(column=0,row=0,sticky='nw',pady=5,padx=[3,0])
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_equal1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_equal1.grid(column=1,row=0,sticky='nw',pady=5)
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label2 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2, text='0', background=sub_lightdark, fg=text_color,font=('monogram',20,'bold'))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label2.grid(column=2,row=0,sticky='nw',pady=5)
 
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label2 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2, text=' - Date format is DD-MM-YY', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label2.grid(column=0,row=1,sticky='nw',pady=5)
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label3 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2, text='Balance Tied', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label3.grid(column=0,row=1,sticky='nw',pady=5,padx=[3,0])
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_equal2 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_equal2.grid(column=1,row=1,sticky='nw',pady=5)
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label4 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2, text='0', background=sub_lightdark, fg=text_color,font=('monogram',20,'bold'))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label4.grid(column=2,row=1,sticky='nw',pady=5)
 
     #button Frame
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3, background=light_dark)

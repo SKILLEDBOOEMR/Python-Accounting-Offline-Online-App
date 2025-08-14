@@ -1,4 +1,5 @@
-from tkinter import Label,LabelFrame,Entry,Frame,Button,Canvas,BooleanVar,END,Tk,Widget
+import tkinter as tkinter
+from tkinter import Label,LabelFrame,Entry,Frame,Button,Canvas,BooleanVar,END,Tk,Widget,messagebox
 from tkinter import ttk as ttk
 from PIL import Image, ImageTk
 import requests
@@ -480,7 +481,6 @@ class API:
     def offline_add_account(self,type_widget,account_widget,error_msg_widget):
         types = type_widget.get()
         account = account_widget.get()
-        print(types,account)
 
         if types == '' or account in ['\u200BEnter Here','']:
             error_msg_widget.configure(fg=error_color,text='Please fill in all the Entry Fields')
@@ -489,6 +489,7 @@ class API:
         
         connect = sql.connect('database.db')
         cursor = connect.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON')
         try:
             cursor.execute('INSERT INTO accounts (account,account_type) VALUES (?,?)', [account,types])
         except Exception as e:
@@ -504,7 +505,30 @@ class API:
         window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
         return True, [types,account,0,0]
         
+    def offline_remove_account(self,type_widget,account_widget,error_msg_widget):
+        types = type_widget.get()
+        account = account_widget.get()
 
+        connect = sql.connect('database.db')
+        cursor = connect.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON')
+
+        try:
+            cursor.execute('DELETE FROM accounts WHERE account = ?', [account,])
+        except Exception as e:
+            connect.close()
+            print(e)
+            error_msg_widget.configure(fg=error_color,text=e)
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False, []
+        
+        connect.commit()
+        connect.close()
+
+        error_msg_widget.configure(fg=success_color,text=f'Succesfully Removed {account} from Account')
+        window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+        return True, [types,account,0,0]
+        
 class GUI:
     def __init__(self):
         #Transaction page add part
@@ -527,6 +551,7 @@ class GUI:
         #The ID value for Selection in trasanction page
         self.treeview_id = int
         self.treeview_selected_row = None
+        self.treeview_selected_row_account = None
 api = API()
 state = GUI()
 
@@ -1688,6 +1713,7 @@ def build_accounting_page_category(master):
             accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack_forget()
             accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3.pack(side='top',fill='both',expand=1)
             focused = accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.focus()
+            state.treeview_selected_row_account = focused
             value = accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.item(focused,'values')
 
             if not value or len(value) < 5:
@@ -1703,6 +1729,7 @@ def build_accounting_page_category(master):
             if lock:
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='disabled')
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='disabled')
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.unbind('<<TreeviewSelect>>')
 
         if getattr(state,'is_online') == False:
             accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1.pack_forget()
@@ -1722,9 +1749,9 @@ def build_accounting_page_category(master):
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack(side='top',fill='both',expand=1)
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.bind('<<TreeviewSelect>>',lambda event :treeview_select(event=event,lock=True))
 
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='disabled')
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='disabled')
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Remove')
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='readonly')
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='normal')
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Remove', command= lambda: button_command('remove'))
 
             if type_of_command == 'edit':
                 reset_button_page()
@@ -1758,7 +1785,20 @@ def build_accounting_page_category(master):
                     to_button_page('add')
 
             if type_of_command == 'remove':
-                print('hello world')
+                print('called')
+                result = messagebox.askquestion(title='Account Removal',message='Removing this account \nwill remove all transaction related to it!',icon='warning',parent=master,type='okcancel')
+                if result: 
+                    api.offline_remove_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
+                    new_list = []
+                    for item in accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children():
+                        if item != state.treeview_selected_row_account:
+                            new_list.append(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.item(item,'values'))
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.delete(item)
+                    
+                    for i,value in enumerate(new_list):
+                        edited_list = value[1:]
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values=[*[i+1],*edited_list])
+                    to_button_page('remove')
 
             if type_of_command == 'edit':
                 print('hello world')
@@ -1820,8 +1860,11 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame2 = Frame(accountingpage_subframe2_frame3_categorypage_leftframe, background=light_dark)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame2.grid(column=0,row=1,sticky='nsew',columnspan=2)
 
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame2, text='', background=sub_lightdark, fg=error_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1.pack(side='top',fill='both', expand=True,pady=(3,0),padx=3,anchor='w')
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame2_border = Frame(accountingpage_subframe2_frame3_categorypage_leftframe_frame2, background=sub_lightdark)
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame2_border.pack(side='top',fill='both', expand=True,pady=(3,0),padx=3,anchor='w')
+
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame2_border, text='', background=sub_lightdark, fg=error_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1.pack(side='left',anchor='w')
 
     #Bottom Frames
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3 = Frame(accountingpage_subframe2_frame3_categorypage_leftframe, background=light_dark,height=316)

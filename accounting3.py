@@ -1,17 +1,18 @@
 import tkinter as tkinter
-from tkinter import Label,LabelFrame,Entry,Frame,Button,Canvas,BooleanVar,END,Tk,Widget,messagebox
+from tkinter import Label,LabelFrame,Entry,Frame,Button,Canvas,BooleanVar,END,Tk,Widget,messagebox,Toplevel
+from winsound import MessageBeep, MB_OK
 from tkinter import ttk as ttk
 from PIL import Image, ImageTk
 import requests
 from dotenv import load_dotenv
 from os import getenv,path
 from threading import Thread
-from time import time
+from time import time, perf_counter
 import json
 from ctypes import windll
 from datetime import datetime, date
 import sqlite3 as sql
-start_time = time()
+start = perf_counter()
 
 load_dotenv()
 BACKEND_URL = getenv('BACKEND_URL')
@@ -531,13 +532,6 @@ class API:
         
 class GUI:
     def __init__(self):
-        #Transaction page add part
-        self.accountingpage_transactionpage_addpage_status = False
-        self.accountingpage_transactionpage_removepage_status = False
-        self.accountingpage_transactionpage_editpage_status = False
-
-        self.selection_status_confirm = False
-
         #main config stuff
         self.account_list = []
         self.category_list =[]
@@ -547,11 +541,11 @@ class GUI:
         #Check whether user use online or offline mode
         self.is_online = False
 
-
         #The ID value for Selection in trasanction page
         self.treeview_id = int
         self.treeview_selected_row = None
         self.treeview_selected_row_account = None
+
 api = API()
 state = GUI()
 
@@ -727,8 +721,6 @@ def build_signup_initialise_page():
 
         for i in range(list_size):
             if targeted_account == lists[i][types]:
-                print(targeted_account)
-                print(lists[i][types])
                 entry_widget.delete(0,END)
                 error_widget.configure(text=f'{targeted_account} is already in the {types} list')
                 return
@@ -1666,9 +1658,6 @@ def build_accounting_page_transaction(master):
 
     accountingpage_subframe2_frame2_buttonpage_frame1.grid_columnconfigure((0,1),weight=1,uniform='a')
 
-    if getattr(state, 'is_online') == False:
-        print('hello')
-
 
 
     #Right frames
@@ -1746,7 +1735,7 @@ def build_accounting_page_category(master):
             if type_of_command == 'remove':
                 reset_button_page()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3.pack_forget()
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack(side='top',fill='both',expand=1)
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack(side='top', fill='both', expand=1)
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.bind('<<TreeviewSelect>>',lambda event :treeview_select(event=event,lock=True))
 
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='readonly')
@@ -1785,9 +1774,17 @@ def build_accounting_page_category(master):
                     to_button_page('add')
 
             if type_of_command == 'remove':
-                print('called')
-                result = messagebox.askquestion(title='Account Removal',message='Removing this account \nwill remove all transaction related to it!',icon='warning',parent=master,type='okcancel')
-                if result: 
+                def countdown(seconds_left):
+                    if not result_label4.winfo_exists():
+                        return
+                    if seconds_left > 0:
+                        result_label4.configure(text=f'You can confirm in {seconds_left} seconds')
+                        master.after(1000, countdown, seconds_left - 1)
+                    else:
+                        result_label4.configure(text=f'You can confirm.', fg = success_color)
+                        result_frame1_button2.configure(command=confirm_button)
+                def confirm_button():
+                    result.destroy()
                     api.offline_remove_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
                     new_list = []
                     for item in accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children():
@@ -1798,7 +1795,56 @@ def build_accounting_page_category(master):
                     for i,value in enumerate(new_list):
                         edited_list = value[1:]
                         accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values=[*[i+1],*edited_list])
-                    to_button_page('remove')
+                    master.after(0,lambda :[to_button_page('remove'),master.update_idletasks()])
+
+                MessageBeep(MB_OK)
+                result = Toplevel(master,background=sub_lightdark)
+                result.title('Warning Message')
+                result.resizable(False,False)
+                result.transient(master)
+                result.grab_set()
+                result.focus_force()
+                master.update_idletasks()
+
+                # Get master window position and size
+                master_x = master.winfo_rootx()
+                master_y = master.winfo_rooty()
+                master_width = master.winfo_width()
+                master_height = master.winfo_height()
+
+                # Calculate position
+                x = master_x + (master_width // 2) - (500 // 2)
+                y = master_y + (master_height // 2) - (200 // 2)
+
+                # Apply new position
+                result.geometry(f"{500}x{200}+{x}+{y}")
+                result.grid_columnconfigure(1,weight=1)
+
+                result_label0 = Label(result, text='!', background=sub_lightdark, fg=error_color,font=('monogram',25,'bold'))
+                result_label0.grid(column=0,row=0,sticky='nsw',pady=[5,0],padx=[5,0],ipady=5,ipadx=10)
+
+                result_label1 = Label(result, text='Confirm Account Deletion?', background=sub_lightdark, fg=text_color,font=('monogram',25,'bold'))
+                result_label1.grid(column=1,row=0,sticky='nsw',pady=[5,0],padx=[0,5])
+
+                result_label2 = Label(result, text='This account and all RELATED transactions', background=sub_lightdark, fg=text_color,font=('monogram',18))
+                result_label2.grid(column=1,row=1,sticky='sw',padx=5)
+
+                result_label3 = Label(result, text='will be PERMANTLY DELETED!', background=sub_lightdark, fg=text_color,font=('monogram',18))
+                result_label3.grid(column=1,row=2,sticky='nw',padx=5)
+
+                result_label4 = Label(result, text='You can confirm in 10 seconds.', background=sub_lightdark, fg=error_color,font=('monogram',18))
+                result_label4.grid(column=1,row=3,sticky='nw',padx=5)
+
+                result_frame1 = Frame(result,background=sub_lightdark)
+                result_frame1.grid(column=0,row=4,sticky='nsew',padx=5,pady=[30,0],columnspan=2)
+                result_frame1.grid_columnconfigure([0,1],weight=1,uniform='a')
+
+                result_frame1_button1 = Button(result_frame1,text='Back',foreground=text_color,background=light_dark,font=(custom_font,20,'bold'),command=lambda:result.destroy())
+                result_frame1_button1.grid(column=0,row=0,sticky='nsew',padx=5)
+
+                result_frame1_button2 = Button(result_frame1,text='Confirm',foreground=text_color,background=light_dark,font=(custom_font,20,'bold'),command=None)
+                result_frame1_button2.grid(column=1,row=0,sticky='nsew',padx=[0,5])
+                countdown(10)
 
             if type_of_command == 'edit':
                 print('hello world')
@@ -2317,6 +2363,6 @@ def app_startup():
     load_page('bootoption_page')
     
 app_startup()
-print("Startup time:", time() - start_time, "seconds")
+print(f"Startup time:{perf_counter() - start:.3f}seconds")
 window.mainloop()
 #load_page('accounting_page')

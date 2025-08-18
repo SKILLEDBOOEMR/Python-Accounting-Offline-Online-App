@@ -416,6 +416,28 @@ class API:
         else:
             return True,[]
 
+    def offline_update_transaction(self,id_list,error_msg_widget):
+        connect = sql.connect('database.db')
+        cursor = connect.cursor()
+        placeholders = ','.join('?' for _ in id_list)
+
+        try:
+            cursor.execute(f'SELECT * FROM transactions WHERE id IN ({placeholders})',id_list)
+            lists = cursor.fetchall()
+            res = []
+            for index,value in enumerate(lists):
+                join_date = '-'.join(str(x) for x in value[5:8])
+                res.append([index + 1,*value[0:5],join_date,*value[8:10]])
+                print([index + 1,*value[0:5],join_date,*value[8:10]])
+
+        except Exception as e:
+            connect.close()
+            error_msg_widget.configure(fg=error_color,text=e)
+            return False, []
+        
+        connect.close()
+        return True, res
+
     def offline_set_treeview_with_params(self,treeview,param_dict,search_return_list=False):
         def function(widget_data,type_transform,column_name,query,params):
             if widget_data != '':
@@ -474,7 +496,7 @@ class API:
     def offline_fetch_accounts(self):
         connect = sql.connect('database.db')
         cursor = connect.cursor()
-        cursor.execute('SELECT account_type,account,transaction_count,actual_value FROM accounts ')
+        cursor.execute('SELECT id,account_type,account,transaction_count,actual_value FROM accounts ')
         temp = cursor.fetchall()
         connect.close()
         return temp
@@ -499,14 +521,36 @@ class API:
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
         
+        ids = cursor.lastrowid
         connect.commit()
         connect.close()
         
         error_msg_widget.configure(fg=success_color,text='Succesfully Added a New Account')
         window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
-        return True, [types,account,0,0]
+        return True, [ids,types,account,0,0]
         
-    def offline_remove_account(self,type_widget,account_widget,error_msg_widget):
+    def offline_remove_account(self,ids,error_msg_widget,account_widget):
+        account_widgets = account_widget.get()
+        connect = sql.connect('database.db')
+        cursor = connect.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON')
+
+        try:
+            cursor.execute('DELETE FROM accounts WHERE id = ?', [ids,])
+        except Exception as e:
+            connect.close()
+            error_msg_widget.configure(fg=error_color,text=e)
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False
+        
+        connect.commit()
+        connect.close()
+
+        error_msg_widget.configure(fg=success_color,text=f'Succesfully Removed {account_widgets} from Account')
+        window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+        return True
+
+    def offline_edit_account(self,type_widget,account_widget,error_msg_widget,ids):
         types = type_widget.get()
         account = account_widget.get()
 
@@ -515,21 +559,76 @@ class API:
         cursor.execute('PRAGMA foreign_keys = ON')
 
         try:
-            cursor.execute('DELETE FROM accounts WHERE account = ?', [account,])
+            cursor.execute('UPDATE accounts SET account = ?, transaction_count = 0, actual_value = 0 WHERE id = ?', [account, ids])
         except Exception as e:
             connect.close()
-            print(e)
-            error_msg_widget.configure(fg=error_color,text=e)
+            error_msg_widget.configure(fg=error_color,text=f'{account} already existed in the list')
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
         
         connect.commit()
         connect.close()
 
-        error_msg_widget.configure(fg=success_color,text=f'Succesfully Removed {account} from Account')
+        error_msg_widget.configure(fg=success_color,text=f'Succesfully Edited {account} from Account')
         window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
         return True, [types,account,0,0]
+
+    def offline_search_account(self,type_widget,account_widget,error_msg_widget):
+        types = type_widget.get()
+        account = account_widget.get()
+
+        data_list = []
+        query = 'SELECT * FROM accounts WHERE 1=1'
+
+        if types != '':
+            query += ' AND account_type = ?'
+            data_list.append(types)
+
+        if account != '' and account != '\u200BEnter Here':
+            query += ' AND account LIKE ?'
+            data_list.append(account)
+
+        connect = sql.connect('database.db')
+        cursor = connect.cursor()
+        print(query,data_list)
+        try:
+            cursor.execute(query,data_list)
+            res = cursor.fetchall()
+        except Exception as e:
+            connect.close()
+            print(e)
+            error_msg_widget.configure(fg=error_color,text=e)
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=str(e)))
+            return False, []
         
+        connect.close()
+
+        error_msg_widget.configure(fg=success_color,text=f'Succesfully Searched')
+        window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+        return True, res
+
+    def offline_update_account(self,treeview,error_msg_widget):
+        print('called')
+        values = treeview.get_children()
+        lists = [treeview.item(i, 'values')[1] for i in values]
+        print(lists)
+        parentheses = ','.join(['?'] * len(lists))
+
+        try:
+            connect = sql.connect('database.db')
+            cursor = connect.cursor()
+            cursor.execute(f'SELECT * FROM accounts WHERE id IN ({parentheses})', lists)
+            res_lists = cursor.fetchall()
+            print(res_lists)
+
+        except Exception as e:
+            connect.close()
+            error_msg_widget.configure(fg=error_color,text=str(e))
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False, []
+        
+        return True, res_lists
+
 class GUI:
     def __init__(self):
         #main config stuff
@@ -951,6 +1050,22 @@ def build_accounting_page():
                 for index,row in enumerate(lists):
                     category_treeview.insert('','end',values=[*[index+1],*row])
                 category_data_label1.configure(text=len(lists))
+            return
+
+        #accounting Transaction setup Function
+        elif targeted_frame == accountingpage_subframe2_frame2:
+            transaction_id = transaction_treeview.get_children()
+            transaction_temp_list = [transaction_treeview.item(item,'values')[1] for item in transaction_id]
+            if len(transaction_id) < 1:
+                return
+            status, data = api.offline_update_transaction(transaction_temp_list,transaction_error_msg)
+            if status:
+                for item in transaction_id:
+                    print(item)
+                    transaction_treeview.delete(item)
+                for item in data:
+                    print(item)
+                    transaction_treeview.insert('','end',values=item)
             
     #Main tabs for the accounting page dividing button to stuff :)
     accountingpage_mainframe1 = Frame(accounting_page,background = light_dark,width=250)
@@ -974,7 +1089,7 @@ def build_accounting_page():
 
     #Transactions page
     accountingpage_subframe2_frame2 = Frame(accountingpage_mainframe2,background=light_dark)
-    build_accounting_page_transaction(accountingpage_subframe2_frame2)
+    transaction_treeview, transaction_error_msg = build_accounting_page_transaction(accountingpage_subframe2_frame2)
 
     #Category page
     accountingpage_subframe2_frame3 = Frame(accountingpage_mainframe2,background='white')
@@ -1683,8 +1798,8 @@ def build_accounting_page_transaction(master):
     master.grid_rowconfigure(0,weight=1)
     master.grid_rowconfigure([1,2],weight=0)
     master.grid_columnconfigure(0,weight=1)
+    return accountingpage_subframe2_frame2_treeview, accountingpage_subframe2_frame2_messages_label1
 
-    #Command to place the uhh transaction list according to the uhh date :)
 def build_accounting_page_category(master):
     def reset_button_page():
         accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.unbind('<<TreeviewSelect>>')
@@ -1697,7 +1812,7 @@ def build_accounting_page_category(master):
         accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label2.configure(text='0')
         accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label4.configure(text='0')
     def to_button_page(type_of_command = str in ['add','remove','edit','search']):
-        def treeview_select(event=None,lock=bool):
+        def treeview_select(event=None,lock=bool,lock2 = bool):
             accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1.pack_forget()
             accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack_forget()
             accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3.pack(side='top',fill='both',expand=1)
@@ -1708,16 +1823,19 @@ def build_accounting_page_category(master):
             if not value or len(value) < 5:
                 return
 
-            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.set(value[1])
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.set(value[2])
             accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.delete(0,END)
-            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.insert(0,value[2])
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.insert(0,value[3])
             accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(fg=text_color)
-            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label2.configure(text=value[3])
-            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label4.configure(text=value[4])
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label2.configure(text=value[4])
+            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label4.configure(text=value[5])
 
             if lock:
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='disabled')
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='disabled')
+
+            if lock2:
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='disabled')
             accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.unbind('<<TreeviewSelect>>')
 
         if getattr(state,'is_online') == False:
@@ -1746,11 +1864,11 @@ def build_accounting_page_category(master):
                 reset_button_page()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3.pack_forget()
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2.pack(side='top',fill='both',expand=1)
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.bind('<<TreeviewSelect>>',lambda event :treeview_select(event=event,lock=False))
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.bind('<<TreeviewSelect>>',lambda event :treeview_select(event=event,lock=False,lock2=True))
 
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='readonly')
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='normal')
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Edit')
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Edit', command = lambda: button_command('edit'))
 
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(values=state.account_type)
 
@@ -1761,11 +1879,112 @@ def build_accounting_page_category(master):
 
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(state='readonly')
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1.configure(state='normal')
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Search')
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_frame1_button2.configure(text='Search',command = lambda: button_command('search'))
 
                 account_type =  [''] + state.account_type 
                 accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1.configure(values=account_type)
     def button_command(type_of_command = str in ['add','remove','edit','search']):
+        def warning_message(type_of_command = str in ['remove','edit']):
+            def countdown(seconds_left):
+                if not result_label4.winfo_exists():
+                    return
+                if seconds_left > 0:
+                    result_label4.configure(text=f'You can confirm in {seconds_left} seconds')
+                    master.after(1000, countdown, seconds_left - 1)
+                else:
+                    result_label4.configure(text=f'You can confirm.', fg = success_color)
+                    if type_of_command == 'remove':
+                        result_frame1_button2.configure(command=confirm_button_delete)
+                    else:
+                        result_frame1_button2.configure(command=confirm_button_edit)
+            def confirm_button_delete():
+                result.destroy()
+                api.offline_remove_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.item(state.treeview_selected_row_account,'values')[1],accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1)
+                accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.delete(state.treeview_selected_row_account)
+
+                status, new_lists = api.offline_update_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
+
+                if status:
+                    for row in accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children():
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.delete(row)
+
+                    for i, value in enumerate(new_lists):
+                        input_list = (i + 1,) + value
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values=input_list)
+
+                master.after(0,lambda :[to_button_page('remove'),master.update_idletasks()])
+            def confirm_button_edit():
+                result.destroy()
+                values = list(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.item(state.treeview_selected_row_account,'values'))
+                results, data = api.offline_edit_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1,values[1])
+                if results == True:
+                    print(data)
+                    status , data = api.offline_update_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
+                    for i in accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children():
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.delete(i)
+
+                    for index, values in enumerate(data):
+                        print(data)
+                        values = (index+1,) + values
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values= values)
+
+                master.after(0,lambda :[to_button_page('edit'),master.update_idletasks()])
+
+            MessageBeep(MB_OK)
+            result = Toplevel(master,background=sub_lightdark)
+            result.title('Warning Message')
+            result.resizable(False,False)
+            result.transient(master)
+            result.grab_set()
+            result.focus_force()
+            master.update_idletasks()
+
+            # Get master window position and size
+            master_x = master.winfo_rootx()
+            master_y = master.winfo_rooty()
+            master_width = master.winfo_width()
+            master_height = master.winfo_height()
+
+            # Calculate position
+            x = master_x + (master_width // 2) - (500 // 2)
+            y = master_y + (master_height // 2) - (200 // 2)
+
+            # Apply new position
+            result.geometry(f"{500}x{200}+{x}+{y}")
+            result.grid_columnconfigure(1,weight=1)
+
+            result_label0 = Label(result, text='!', background=sub_lightdark, fg=error_color,font=('monogram',25,'bold'))
+            result_label0.grid(column=0,row=0,sticky='nsw',pady=[5,0],padx=[5,0],ipady=5,ipadx=10)
+
+            result_label1 = Label(result, text='Confirm Account Deletion?', background=sub_lightdark, fg=text_color,font=('monogram',25,'bold'))
+            result_label1.grid(column=1,row=0,sticky='nsw',pady=[5,0],padx=[0,5])
+
+            result_label2 = Label(result, text='This account and all RELATED transactions', background=sub_lightdark, fg=text_color,font=('monogram',18))
+            result_label2.grid(column=1,row=1,sticky='sw',padx=5)
+
+            result_label3 = Label(result, text='will be PERMANTLY DELETED!', background=sub_lightdark, fg=text_color,font=('monogram',18))
+            result_label3.grid(column=1,row=2,sticky='nw',padx=5)
+
+            result_label4 = Label(result, text='You can confirm in 10 seconds.', background=sub_lightdark, fg=error_color,font=('monogram',18))
+            result_label4.grid(column=1,row=3,sticky='nw',padx=5)
+
+            result_frame1 = Frame(result,background=sub_lightdark)
+            result_frame1.grid(column=0,row=4,sticky='nsew',padx=5,pady=[30,0],columnspan=2)
+            result_frame1.grid_columnconfigure([0,1],weight=1,uniform='a')
+
+            result_frame1_button1 = Button(result_frame1,text='Back',foreground=text_color,background=light_dark,font=(custom_font,20,'bold'),command=lambda:result.destroy())
+            result_frame1_button1.grid(column=0,row=0,sticky='nsew',padx=5)
+
+            result_frame1_button2 = Button(result_frame1,text='Confirm',foreground=text_color,background=light_dark,font=(custom_font,20,'bold'),command=None)
+            result_frame1_button2.grid(column=1,row=0,sticky='nsew',padx=[0,5])
+            countdown(10)
+            if type_of_command == 'remove':
+                result_label1.configure(text='Confirm Account Deletion?')
+                result_label3.configure(text='will be PERMANTLY DELETED!')
+            else:
+                result_label1.configure(text='Confirm Account Edit?')
+                result_label3.configure(text='will be PERMANTLY CHANGED!')
+
         if getattr(state,'is_online') == False:
             if type_of_command == 'add':
                 status, data = api.offline_add_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
@@ -1774,83 +1993,21 @@ def build_accounting_page_category(master):
                     to_button_page('add')
 
             if type_of_command == 'remove':
-                def countdown(seconds_left):
-                    if not result_label4.winfo_exists():
-                        return
-                    if seconds_left > 0:
-                        result_label4.configure(text=f'You can confirm in {seconds_left} seconds')
-                        master.after(1000, countdown, seconds_left - 1)
-                    else:
-                        result_label4.configure(text=f'You can confirm.', fg = success_color)
-                        result_frame1_button2.configure(command=confirm_button)
-                def confirm_button():
-                    result.destroy()
-                    api.offline_remove_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
-                    new_list = []
-                    for item in accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children():
-                        if item != state.treeview_selected_row_account:
-                            new_list.append(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.item(item,'values'))
-                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.delete(item)
-                    
-                    for i,value in enumerate(new_list):
-                        edited_list = value[1:]
-                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values=[*[i+1],*edited_list])
-                    master.after(0,lambda :[to_button_page('remove'),master.update_idletasks()])
-
-                MessageBeep(MB_OK)
-                result = Toplevel(master,background=sub_lightdark)
-                result.title('Warning Message')
-                result.resizable(False,False)
-                result.transient(master)
-                result.grab_set()
-                result.focus_force()
-                master.update_idletasks()
-
-                # Get master window position and size
-                master_x = master.winfo_rootx()
-                master_y = master.winfo_rooty()
-                master_width = master.winfo_width()
-                master_height = master.winfo_height()
-
-                # Calculate position
-                x = master_x + (master_width // 2) - (500 // 2)
-                y = master_y + (master_height // 2) - (200 // 2)
-
-                # Apply new position
-                result.geometry(f"{500}x{200}+{x}+{y}")
-                result.grid_columnconfigure(1,weight=1)
-
-                result_label0 = Label(result, text='!', background=sub_lightdark, fg=error_color,font=('monogram',25,'bold'))
-                result_label0.grid(column=0,row=0,sticky='nsw',pady=[5,0],padx=[5,0],ipady=5,ipadx=10)
-
-                result_label1 = Label(result, text='Confirm Account Deletion?', background=sub_lightdark, fg=text_color,font=('monogram',25,'bold'))
-                result_label1.grid(column=1,row=0,sticky='nsw',pady=[5,0],padx=[0,5])
-
-                result_label2 = Label(result, text='This account and all RELATED transactions', background=sub_lightdark, fg=text_color,font=('monogram',18))
-                result_label2.grid(column=1,row=1,sticky='sw',padx=5)
-
-                result_label3 = Label(result, text='will be PERMANTLY DELETED!', background=sub_lightdark, fg=text_color,font=('monogram',18))
-                result_label3.grid(column=1,row=2,sticky='nw',padx=5)
-
-                result_label4 = Label(result, text='You can confirm in 10 seconds.', background=sub_lightdark, fg=error_color,font=('monogram',18))
-                result_label4.grid(column=1,row=3,sticky='nw',padx=5)
-
-                result_frame1 = Frame(result,background=sub_lightdark)
-                result_frame1.grid(column=0,row=4,sticky='nsew',padx=5,pady=[30,0],columnspan=2)
-                result_frame1.grid_columnconfigure([0,1],weight=1,uniform='a')
-
-                result_frame1_button1 = Button(result_frame1,text='Back',foreground=text_color,background=light_dark,font=(custom_font,20,'bold'),command=lambda:result.destroy())
-                result_frame1_button1.grid(column=0,row=0,sticky='nsew',padx=5)
-
-                result_frame1_button2 = Button(result_frame1,text='Confirm',foreground=text_color,background=light_dark,font=(custom_font,20,'bold'),command=None)
-                result_frame1_button2.grid(column=1,row=0,sticky='nsew',padx=[0,5])
-                countdown(10)
+                warning_message('remove')
 
             if type_of_command == 'edit':
-                print('hello world')
+                warning_message('edit')
 
             if type_of_command == 'search':
-                print('hello world')
+                status, data = api.offline_search_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
+                if status:
+                    for row in accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children():
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.delete(row)
+
+                    for index,value in enumerate(data):
+                        added_list = (index+1,) + value
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values=added_list)
+
     def back_button():
         for frame in [accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3]:
             frame.pack_forget()
@@ -1881,7 +2038,7 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame1_scrollbar = ttk.Scrollbar(accountingpage_subframe2_frame3_categorypage_leftframe_frame1)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame1_scrollbar.grid(column=1,row=0,sticky='nsew')
 
-    headings = ('No.','Type','Account','Entry Count','Balance')
+    headings = ('No.','ID','Type','Account','Entry Count','Balance')
     
     accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview = ttk.Treeview(accountingpage_subframe2_frame3_categorypage_leftframe_frame1,columns=headings, show='headings',yscrollcommand=accountingpage_subframe2_frame3_categorypage_leftframe_frame1_scrollbar)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.grid(column=0,row=0,sticky='nsew')
@@ -1889,6 +2046,9 @@ def build_accounting_page_category(master):
 
     accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.column('No.',anchor='w',stretch=True,minwidth=35,width=35)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.heading('No.', text = 'No.')
+
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.column('ID',anchor='w',stretch=True,minwidth=35,width=35)
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.heading('ID', text = 'ID')
 
     accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.column('Type',anchor='w',stretch=True,minwidth=50,width=100)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.heading('Type', text = 'Type')
@@ -2131,8 +2291,9 @@ def offline_startup():
 
     account_table = '''
     CREATE TABLE IF NOT EXISTS accounts (
-    account TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     account_type TEXT NOT NULL,
+    account TEXT UNIQUE,
     transaction_count INTEGER DEFAULT 0,
     actual_value INTEGER DEFAULT 0,
  
@@ -2153,9 +2314,9 @@ def offline_startup():
     year INTEGER NOT NULL,
     description TEXT NOT NULL,
     amount INTEGER NOT NULL,  
-    FOREIGN KEY (from_account_type) REFERENCES account_types(account_type),
+    FOREIGN KEY (from_account_type) REFERENCES account_types(account_type) ON UPDATE CASCADE ON DELETE CASCADE,
     FOREIGN KEY (from_account) REFERENCES accounts(account) ON UPDATE CASCADE ON DELETE CASCADE,
-    FOREIGN KEY (to_account_type) REFERENCES account_types(account_type),
+    FOREIGN KEY (to_account_type) REFERENCES account_types(account_type) ON UPDATE CASCADE ON DELETE CASCADE,
     FOREIGN KEY (to_account) REFERENCES accounts(account) ON UPDATE CASCADE ON DELETE CASCADE
     );'''
     cursor.execute(transaction_table)
@@ -2260,87 +2421,92 @@ def offline_startup():
     AFTER UPDATE ON transactions
     BEGIN
         UPDATE accounts
-        set actual_value = actual_value -
-            CASE
-                WHEN OLD.from_account_type = 'assets'
-                    AND OLD.to_account_type IN ('assets','expenses','liabilities','equity')
-                    THEN -OLD.amount 
+        set actual_value = actual_value - (
+                CASE
+                    WHEN OLD.from_account_type = 'assets'
+                        AND OLD.to_account_type IN ('assets','expenses','liabilities','equity')
+                        THEN -OLD.amount 
 
-                WHEN OLD.from_account_type = 'liabilities'
-                    AND OLD.to_account_type IN ('liabilities','expenses','equity')
-                    THEN -OLD.amount
+                    WHEN OLD.from_account_type = 'liabilities'
+                        AND OLD.to_account_type IN ('liabilities','expenses','equity')
+                        THEN -OLD.amount
 
-                WHEN OLD.from_account_type = 'equity'
-                    AND OLD.to_account_type IN ('assets','expenses')
-                    THEN -OLD.amount
-                
-                ELSE OLD.amount
-            END,
+                    WHEN OLD.from_account_type = 'equity'
+                        AND OLD.to_account_type IN ('assets','expenses')
+                        THEN -OLD.amount
+                    
+                    ELSE OLD.amount
+                END
+            ),
             transaction_count = transaction_count - 1
         WHERE account = OLD.from_account;
 
         UPDATE accounts
-        SET actual_value = actual_value -
-            CASE
-                WHEN OLD.to_account_type = 'liabilities'
-                    AND OLD.from_account_type = 'assets'
-                    THEN -OLD.amount
+        SET actual_value = actual_value - (
+                CASE
+                    WHEN OLD.to_account_type = 'liabilities'
+                        AND OLD.from_account_type = 'assets'
+                        THEN -OLD.amount
 
-                WHEN OLD.to_account_type = 'equity'
-                    AND OLD.from_account_type IN ('assets','liabilities')
-                    THEN -OLD.amount
+                    WHEN OLD.to_account_type = 'equity'
+                        AND OLD.from_account_type IN ('assets','liabilities')
+                        THEN -OLD.amount
 
-                ELSE OLD.amount
-            END,
+                    ELSE OLD.amount
+                END
+            ),
             transaction_count = transaction_count - 
-            CASE
-                WHEN OLD.from_account = OLD.to_account
-                THEN 0
-                ELSE 1
-            END
+                CASE
+                    WHEN OLD.from_account = OLD.to_account THEN 0
+                    ELSE 1
+                END
         WHERE account = OLD.to_account; 
-
+        
         UPDATE accounts
-        SET actual_value = actual_value +
-            CASE
-                WHEN NEW.from_account_type = 'assets'
-                    AND NEW.to_account_type IN ('assets','expenses','liabilities','equity')
-                    THEN -NEW.amount
-                
-                WHEN NEW.from_account_type = 'liabilities'
-                    AND NEW.to_account_type IN ('liabilities','expenses','equity')
-                    THEN -NEW.amount
+        SET actual_value = actual_value + (
+                CASE
+                    WHEN NEW.from_account_type = 'assets'
+                        AND NEW.to_account_type IN ('assets','expenses','liabilities','equity')
+                        THEN -NEW.amount
+                    
+                    WHEN NEW.from_account_type = 'liabilities'
+                        AND NEW.to_account_type IN ('liabilities','expenses','equity')
+                        THEN -NEW.amount
 
-                WHEN NEW.from_account_type = 'equity'
-                    AND NEW.to_account_type IN ('assets','expenses')
-                    THEN -NEW.amount
-                
-                ELSE NEW.amount
-            END,
+                    WHEN NEW.from_account_type = 'equity'
+                        AND NEW.to_account_type IN ('assets','expenses')
+                        THEN -NEW.amount
+                    
+                    ELSE NEW.amount
+                END
+            ),
             transaction_count = transaction_count + 1
         WHERE account = NEW.from_account;
 
         UPDATE accounts
-        SET actual_value = actual_value +
-            CASE
-                WHEN NEW.to_account_type = 'liabilities'
-                    AND NEW.from_account_type = 'assets'
-                    THEN -NEW.amount
+        SET actual_value = actual_value + (
+                CASE
+                    WHEN NEW.to_account_type = 'liabilities'
+                        AND NEW.from_account_type = 'assets'
+                        THEN -NEW.amount
 
-                WHEN NEW.to_account_type = 'equity'
-                    AND NEW.from_account_type IN ('assets','liabilities')
-                    THEN -NEW.amount
+                    WHEN NEW.to_account_type = 'equity'
+                        AND NEW.from_account_type IN ('assets','liabilities')
+                        THEN -NEW.amount
 
-                ELSE NEW.amount
-            END,
+                    ELSE NEW.amount
+                END
+            ),
             transaction_count = transaction_count + 
-            CASE
-                WHEN NEW.from_account = NEW.to_account
-                THEN 0
-                ELSE 1
-            END
+                CASE
+                    WHEN NEW.from_account = NEW.to_account THEN 0
+                    ELSE 1
+                END
         WHERE account = NEW.to_account;
     END;
+    '''
+    update_trigger_account = '''
+    
     '''
     cursor.execute(insert_trigger)
     cursor.execute(remove_trigger)
@@ -2361,7 +2527,17 @@ def offline_startup():
 
 def app_startup():
     load_page('bootoption_page')
-    
+
+def stress_test():
+    connect = sql.connect('database.db')
+    cursor = connect.cursor()
+    for i in range(1000):
+        cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',['assets','cash','liabilities','loansZ',20,5,2000,'STRESS TEST',i])
+
+    connect.commit()
+    connect.close()
+
+#stress_test()
 app_startup()
 print(f"Startup time:{perf_counter() - start:.3f}seconds")
 window.mainloop()

@@ -1,6 +1,9 @@
 import tkinter as tkinter
 from tkinter import Label,LabelFrame,Entry,Frame,Button,Canvas,BooleanVar,END,Tk,Widget,messagebox,Toplevel
 from winsound import MessageBeep, MB_OK
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+from matplotlib import font_manager, rcParams
 from tkinter import ttk as ttk
 from PIL import Image, ImageTk
 import requests
@@ -29,6 +32,15 @@ sub_textcolor = "#8EA0AC"
 
 error_color = '#EF4444'
 success_color = '#28a745'
+
+matplotlib_font = font_manager.FontProperties(fname='assets/monogram.ttf')
+font_manager.fontManager.addfont('assets/monogram.ttf')
+rcParams['font.family'] = 'monogram'
+rcParams['font.size'] = 15
+rcParams['text.color'] = text_color
+rcParams['xtick.color'] = text_color
+rcParams['ytick.color'] = text_color
+rcParams['font.weight'] = 'bold'
 
 
 window = Tk()
@@ -352,6 +364,7 @@ class API:
 
         connect = sql.connect('database.db')
         cursor = connect.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON;')
 
         cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (from_type, from_account,to_type,to_account,date_list[0],date_list[1],date_list[2],description,amount))
 
@@ -366,6 +379,7 @@ class API:
     def offline_remove_entry(self,ids=int,error_msg_widget=Label):
         connect = sql.connect('database.db')
         cursor = connect.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON;')
 
         #delete part very careful
         cursor.execute('DELETE FROM transactions WHERE id = ?',(ids,))
@@ -400,6 +414,7 @@ class API:
 
         connect = sql.connect('database.db')
         cursor = connect.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON;')
 
         split_date = date.split('-')
         #Update the new transaction
@@ -419,6 +434,7 @@ class API:
     def offline_update_transaction(self,id_list,error_msg_widget):
         connect = sql.connect('database.db')
         cursor = connect.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON;')
         placeholders = ','.join('?' for _ in id_list)
 
         try:
@@ -461,6 +477,7 @@ class API:
 
         connect = sql.connect('database.db')
         cursor = connect.cursor()
+        cursor.execute('PRAGMA foreign_keys = ON;')
 
         try:
             for i in param_dict:
@@ -608,10 +625,8 @@ class API:
         return True, res
 
     def offline_update_account(self,treeview,error_msg_widget):
-        print('called')
         values = treeview.get_children()
         lists = [treeview.item(i, 'values')[1] for i in values]
-        print(lists)
         parentheses = ','.join(['?'] * len(lists))
 
         try:
@@ -619,7 +634,6 @@ class API:
             cursor = connect.cursor()
             cursor.execute(f'SELECT * FROM accounts WHERE id IN ({parentheses})', lists)
             res_lists = cursor.fetchall()
-            print(res_lists)
 
         except Exception as e:
             connect.close()
@@ -2182,7 +2196,7 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame4= Frame(accountingpage_subframe2_frame3_categorypage_leftframe, background=light_dark,height=316)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame4.grid_columnconfigure(0,weight=1)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame4.grid_rowconfigure([0,1,2,3],weight=1,uniform='a')
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame4.grid(column=1,row=2,sticky='nsew',padx=[0,3])
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame4.grid(column=1,row=2,sticky='nsew')
 
     accountingpage_subframe2_frame3_categorypage_leftframe_frame4_button1 = Button(accountingpage_subframe2_frame3_categorypage_leftframe_frame4,text='Add',foreground=text_color,background=light_dark,font=(custom_font,20,'bold'),command = lambda: to_button_page('add'))
     accountingpage_subframe2_frame3_categorypage_leftframe_frame4_button1.grid(column=0,row=0,sticky='nsew',pady=[3,3],padx=3,ipadx=30)
@@ -2197,8 +2211,23 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame4_button4.grid(column=0,row=3,sticky='nsew',pady=[0,3],padx=3,ipadx=30)
 
     # Right Frmae
-    accountingpage_subframe2_frame3_categorypage_rightframe = Frame(accountingpage_subframe2_frame3_categorypage, background='blue')
-    accountingpage_subframe2_frame3_categorypage_rightframe.grid(column=1,row=0,sticky='nsew')
+    accountingpage_subframe2_frame3_categorypage_rightframe = Frame(accountingpage_subframe2_frame3_categorypage, background=light_dark)
+    accountingpage_subframe2_frame3_categorypage_rightframe.grid(column=1,row=0,sticky='nsew',padx=[5,0])
+    accountingpage_subframe2_frame3_categorypage_rightframe.grid_columnconfigure(0,weight=1)
+    accountingpage_subframe2_frame3_categorypage_rightframe.grid_rowconfigure(0,weight=1)
+
+    fig = Figure(figsize=(5,4), dpi=100)
+    fig.patch.set_facecolor(color=sub_lightdark)
+    ax = fig.add_subplot(111)
+    ax.set_facecolor(sub_lightdark)
+
+    canvas = FigureCanvasTkAgg(fig, master =accountingpage_subframe2_frame3_categorypage_rightframe )
+    canvas.draw()
+    canvas.get_tk_widget().grid(column=0,row=0,sticky='nsew',padx=3,pady=[3,0])
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe, background=sub_lightdark,height=344)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1.grid(column=0,row=1,sticky='nsew',padx=3,pady=3)
+
 
     return accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview, accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2
 
@@ -2301,6 +2330,18 @@ def offline_startup():
     );
     '''
     cursor.execute(account_table)
+
+    budget_table = '''
+    CREATE TABLE IF NOT EXISTS budget (
+    id INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL,
+    budget_value INT NOT NULL,
+    description TEXT NOT NULL CHECK(length(description) <= 50),
+
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON UPDATE CASCADE ON DELETE CASCADE
+    );
+    '''
+    cursor.execute(budget_table)
 
     transaction_table = '''
     CREATE TABLE IF NOT EXISTS transactions (

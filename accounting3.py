@@ -36,7 +36,7 @@ success_color = '#28a745'
 matplotlib_font = font_manager.FontProperties(fname='assets/monogram.ttf')
 font_manager.fontManager.addfont('assets/monogram.ttf')
 rcParams['font.family'] = 'monogram'
-rcParams['font.size'] = 15
+rcParams['font.size'] = 18
 rcParams['text.color'] = text_color
 rcParams['xtick.color'] = text_color
 rcParams['ytick.color'] = text_color
@@ -642,6 +642,92 @@ class API:
             return False, []
         
         return True, res_lists
+    
+    def offline_graph_plotting(self,start_date_widget,end_date_widget,account_type_widget,account_widget,graph_type_widget,error_msg_widget):
+        start_date = start_date_widget.get()
+        end_date = end_date_widget.get()
+        account_type = account_type_widget.get()
+        account = account_widget.get()
+        graph_type = graph_type_widget.get()
+
+        query = f"""
+        SELECT {graph_type},day,month,year FROM transactions
+        WHERE
+            (printf('%02d', day) || '-' || 
+            printf('%02d', month) || '-' || 
+            CAST(year AS TEXT)) BETWEEN ? AND ?
+        ORDER BY year DESC, month DESC, day DESC
+        """
+        data = [start_date,end_date]
+
+        #Date checking
+        try:
+            if start_date in ['\u200BDD-MM-YY',''] and  end_date in ['\u200BDD-MM-YY', '']:
+                error_msg_widget.configure(fg=error_color,text='Please fill in the dates')
+                window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+                return False, []
+            
+            start_date_list = start_date.split('-')
+            end_date_list = end_date.split('-')
+
+            if not len(start_date_list) == 3 or not len(end_date_list) == 3:
+                error_msg_widget.configure(fg=error_color,text='Please fill in the dates')
+                window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+                return False, []
+            
+            date1 = datetime.strptime(start_date,'%d-%m-%Y')
+            date2 = datetime.strptime(end_date,'%d-%m-%Y')
+
+            if date1 > date2:
+                error_msg_widget.configure(fg=error_color,text='Start date is bigger than End date!')
+                window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+                return False, []            
+        except Exception as e:
+            error_msg_widget.configure(fg=error_color,text=str(e))
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False, []
+        
+        if account_type == '\u200BEnter Here' or account_type == '' or graph_type == '':
+            error_msg_widget.configure(fg=error_color,text='Please fill in all the fields')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False, []
+        
+        if account != '\u200BEnter Here' and account_type != '':
+            query += 'AND account = ?'
+            data.append(account)
+        
+        try:
+            connect = sql.connect('database.db')
+            cursor = connect.cursor()
+            if graph_type == 'Amount':
+                graph_type = 'amount'
+                cursor.execute(query,data)
+                data_list = cursor.fetchall()
+            else:
+                graph_type = 'transaction_count'
+                cursor.execute(query,data)
+                data_list = cursor.fetchall()
+
+            connect.close()
+            date1 = datetime.strptime(start_date, "%d-%m-%Y")
+            date2 = datetime.strptime(end_date, "%d-%m-%Y")
+
+            # Calculate the difference in days
+            days_difference = abs((date2 - date1).days) + 1
+            res = [[0]*days_difference, []*days_difference]
+
+            for i in data_list:
+                date1 = datetime.strptime(start_date, "%d-%m-%Y")
+                date2 = datetime.strptime(f'{i[1]}-{i[2]}-{i[3]}', "%d-%m-%Y")
+                days_difference = abs((date2 - date1).days)
+                res[0][days_difference] += i[0]
+
+        except Exception as e:
+            error_msg_widget.configure(fg=error_color,text=str(e))
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False, []
+
+        return True , res
 
 class GUI:
     def __init__(self):
@@ -1075,10 +1161,8 @@ def build_accounting_page():
             status, data = api.offline_update_transaction(transaction_temp_list,transaction_error_msg)
             if status:
                 for item in transaction_id:
-                    print(item)
                     transaction_treeview.delete(item)
                 for item in data:
-                    print(item)
                     transaction_treeview.insert('','end',values=item)
             
     #Main tabs for the accounting page dividing button to stuff :)
@@ -2211,25 +2295,103 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame4_button4.grid(column=0,row=3,sticky='nsew',pady=[0,3],padx=3,ipadx=30)
 
     # Right Frmae
-    accountingpage_subframe2_frame3_categorypage_rightframe = Frame(accountingpage_subframe2_frame3_categorypage, background=light_dark)
+    accountingpage_subframe2_frame3_categorypage_rightframe = Frame(accountingpage_subframe2_frame3_categorypage, background=sub_lightdark)
     accountingpage_subframe2_frame3_categorypage_rightframe.grid(column=1,row=0,sticky='nsew',padx=[5,0])
     accountingpage_subframe2_frame3_categorypage_rightframe.grid_columnconfigure(0,weight=1)
     accountingpage_subframe2_frame3_categorypage_rightframe.grid_rowconfigure(0,weight=1)
 
-    fig = Figure(figsize=(5,4), dpi=100)
+    accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe = Frame(accountingpage_subframe2_frame3_categorypage_rightframe, background=light_dark)
+    accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe.grid(column=0,row=0,sticky='nsew')
+
+    fig = Figure(figsize=(1,1), dpi=100)
     fig.patch.set_facecolor(color=sub_lightdark)
     ax = fig.add_subplot(111)
     ax.set_facecolor(sub_lightdark)
-
-    canvas = FigureCanvasTkAgg(fig, master =accountingpage_subframe2_frame3_categorypage_rightframe )
+    ax.spines['top'].set_color(sub_lightdark)
+    ax.spines['bottom'].set_color("white")
+    ax.spines['left'].set_color("white")
+    ax.spines['right'].set_color(sub_lightdark)
+    
+    canvas = FigureCanvasTkAgg(fig, master =accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe )
     canvas.draw()
-    canvas.get_tk_widget().grid(column=0,row=0,sticky='nsew',padx=3,pady=[3,0])
+    canvas.get_tk_widget().pack(side='top',expand=1,fill='both',padx=3,pady=3)
 
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe, background=sub_lightdark,height=344)
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1.grid(column=0,row=1,sticky='nsew',padx=3,pady=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe, background=light_dark,height=346)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1.grid_propagate(False)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1.grid_columnconfigure(0,weight=1)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1.grid_rowconfigure(1,weight=1)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1.grid(column=0,row=1,sticky='nsew',pady=[5,0])
 
+    #Message Frame:
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe_frame1, background=sub_lightdark)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1.grid(column=0,row=0,sticky='nsew',padx=3,pady=3)
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1, text='Hello im testing', background=sub_lightdark, fg=error_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1.pack(side='left',anchor='w')
+
+    #Data Frame
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe_frame1, background=sub_lightdark)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2.grid_columnconfigure([0],weight=1)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2.grid_rowconfigure([0,1],weight=1)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2.grid(column=0,row=1,sticky='nsew',padx=3,pady=[0,3])
+    
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1 = LabelFrame(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2,background=sub_lightdark,text='Date Range',font=(custom_font,20,'bold'),fg=text_color)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1.grid_columnconfigure([0,2],weight=1)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1.grid(column=0,row=0,sticky='nsew')
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_label1 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1, text='Start Date', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_label1.grid(column=0,row=0,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_equal1 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_equal1.grid(column=1,row=0,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1 = Entry(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1, background = light_dark, fg = sub_textcolor,font=('monogram',20),disabledbackground=light_dark,disabledforeground=text_color)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1.insert(0,'\u200BDD-MM-YY')
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1.bind('<FocusIn>', lambda event: entry_text(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1,['\u200BDD-MM-YY']))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1.bind('<FocusOut>', lambda event: entry_text(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1,['\u200BDD-MM-YY'],True,'\u200BDD-MM-YY'))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1.grid(column=2,row=0,sticky='new',pady=5,padx=[0,5])
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_label2 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1, text='End Date', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_label2.grid(column=0,row=1,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_equal2 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_equal2.grid(column=1,row=1,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2 = Entry(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1, background = light_dark, fg = sub_textcolor,font=('monogram',20),disabledbackground=light_dark,disabledforeground=text_color)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2.insert(0,'\u200BDD-MM-YY')
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2.bind('<FocusIn>', lambda event: entry_text(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2,['\u200BDD-MM-YY']))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2.bind('<FocusOut>', lambda event: entry_text(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2,['\u200BDD-MM-YY'],True,'\u200BDD-MM-YY'))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2.grid(column=2,row=1,sticky='new',pady=5,padx=[0,5])
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2 = LabelFrame(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2,background=sub_lightdark,text='Classification',font=(custom_font,20,'bold'),fg=text_color)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2.grid_columnconfigure([0,2],weight=1)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2.grid(column=0,row=1,sticky='nsew')
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label1 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text='Graph Data', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label1.grid(column=0,row=0,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal1 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal1.grid(column=1,row=0,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20),values=['Amount','Entry Count'])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1.grid(column=2,row=0,sticky='nsew',pady=5,padx=[0,5])
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label2 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text='Account', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label2.grid(column=0,row=2,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal2 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal2.grid(column=1,row=2,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2 = Entry(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, background = light_dark, fg = sub_textcolor,font=('monogram',20),disabledbackground=light_dark,disabledforeground=text_color)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2.insert(0,'\u200BEnter Here')
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2.bind('<FocusIn>', lambda event: entry_text(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2,['\u200BEnter Here']))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2.bind('<FocusOut>', lambda event: entry_text(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2,['\u200BEnter Here'],True,'\u200BEnter Here'))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2.grid(column=2,row=2,sticky='new',pady=5,padx=[0,5])
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label3 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text='Account Type', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label3.grid(column=0,row=1,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal3 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal3.grid(column=1,row=1,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20),values=['','assets','liabilities','equity','revenue','expenses'])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2.grid(column=2,row=1,sticky='nsew',pady=5,padx=[0,5])
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_button1 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2,text='Plot Graph',background=light_dark,fg=text_color,font=(custom_font,20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_button1.grid(column=0,row=2,sticky='nsew')
 
     return accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview, accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2
+
 
 #Functions to make life easier
 def pack_center(master,widget,color):# exactly what it sounds to pack_center

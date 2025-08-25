@@ -13,8 +13,9 @@ from threading import Thread
 from time import time, perf_counter
 import json
 from ctypes import windll
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import sqlite3 as sql
+import random 
 start = perf_counter()
 
 load_dotenv()
@@ -649,16 +650,7 @@ class API:
         account_type = account_type_widget.get()
         account = account_widget.get()
         graph_type = graph_type_widget.get()
-
-        query = f"""
-        SELECT {graph_type},day,month,year FROM transactions
-        WHERE
-            (printf('%02d', day) || '-' || 
-            printf('%02d', month) || '-' || 
-            CAST(year AS TEXT)) BETWEEN ? AND ?
-        ORDER BY year DESC, month DESC, day DESC
-        """
-        data = [start_date,end_date]
+        
 
         #Date checking
         try:
@@ -692,41 +684,60 @@ class API:
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
         
+        if graph_type == 'Amount':graph_type='amount,'
+        else: graph_type = 'transaction_count'
+
+        query = f"""
+        SELECT {graph_type}day,month,year FROM daily_total
+        WHERE
+            (CAST(year AS TEXT) || '-' ||
+            printf('%02d', month) || '-' ||
+            printf('%02d', day)) BETWEEN ? AND ?
+        """
+        start_date_sql = datetime.strptime(start_date, "%d-%m-%Y").strftime("%Y-%m-%d")
+        end_date_sql = datetime.strptime(end_date, "%d-%m-%Y").strftime("%Y-%m-%d")
+        data = [start_date_sql,end_date_sql]
         if account != '\u200BEnter Here' and account_type != '':
             query += 'AND account = ?'
             data.append(account)
+
+        if account_type:
+            query += ' AND account_type = ?'
+            data.append(account_type)
+
+        query += '\nORDER BY year DESC, month DESC, day DESC'
         
         try:
             connect = sql.connect('database.db')
             cursor = connect.cursor()
-            if graph_type == 'Amount':
-                graph_type = 'amount'
-                cursor.execute(query,data)
-                data_list = cursor.fetchall()
-            else:
-                graph_type = 'transaction_count'
-                cursor.execute(query,data)
-                data_list = cursor.fetchall()
-
+            cursor.execute(query,data)
+            data_list = cursor.fetchall()
             connect.close()
             date1 = datetime.strptime(start_date, "%d-%m-%Y")
             date2 = datetime.strptime(end_date, "%d-%m-%Y")
+            days_difference = abs((date2 - date1).days) + 1
+            mid_date = date1 + timedelta(days=days_difference // 2)
 
             # Calculate the difference in days
-            days_difference = abs((date2 - date1).days) + 1
-            res = [[0]*days_difference, []*days_difference]
+            date_list = [0] * days_difference
+            date_list[0] = date1.strftime("%d-%m-%Y")
+            date_list[days_difference//2] = mid_date.strftime("%d-%m-%Y")
+            date_list[-1] = date2.strftime("%d-%m-%Y")
+            res = [[0.0]*days_difference, date_list]
+            print(res)
 
             for i in data_list:
+                i = list(i)
                 date1 = datetime.strptime(start_date, "%d-%m-%Y")
                 date2 = datetime.strptime(f'{i[1]}-{i[2]}-{i[3]}', "%d-%m-%Y")
                 days_difference = abs((date2 - date1).days)
-                res[0][days_difference] += i[0]
+                res[0][days_difference] += abs(i[0])
 
         except Exception as e:
             error_msg_widget.configure(fg=error_color,text=str(e))
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
-
+        print(res)
         return True , res
 
 class GUI:
@@ -2295,6 +2306,17 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame4_button4.grid(column=0,row=3,sticky='nsew',pady=[0,3],padx=3,ipadx=30)
 
     # Right Frmae
+    def graph_plotting():
+        status, data = api.offline_graph_plotting(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1)
+        if status:
+            ax.clear()
+            ax.plot(data[1],data[0], marker='o', linestyle='-', color='blue')
+            ax.set_xlabel('Date')
+            ax.set_ylabel('Amount' )
+            ax.set_title('Daily Data')
+            canvas.draw_idle()
+        else:
+            print('failed')
     accountingpage_subframe2_frame3_categorypage_rightframe = Frame(accountingpage_subframe2_frame3_categorypage, background=sub_lightdark)
     accountingpage_subframe2_frame3_categorypage_rightframe.grid(column=1,row=0,sticky='nsew',padx=[5,0])
     accountingpage_subframe2_frame3_categorypage_rightframe.grid_columnconfigure(0,weight=1)
@@ -2313,7 +2335,6 @@ def build_accounting_page_category(master):
     ax.spines['right'].set_color(sub_lightdark)
     
     canvas = FigureCanvasTkAgg(fig, master =accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe )
-    canvas.draw()
     canvas.get_tk_widget().pack(side='top',expand=1,fill='both',padx=3,pady=3)
 
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe, background=light_dark,height=346)
@@ -2387,7 +2408,8 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20),values=['','assets','liabilities','equity','revenue','expenses'])
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2.grid(column=2,row=1,sticky='nsew',pady=5,padx=[0,5])
 
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_button1 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2,text='Plot Graph',background=light_dark,fg=text_color,font=(custom_font,20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_button1 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2,text='Plot Graph',background=light_dark,fg=text_color,font=(custom_font,20), command = graph_plotting)
+
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_button1.grid(column=0,row=2,sticky='nsew')
 
     return accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview, accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2
@@ -2505,6 +2527,23 @@ def offline_startup():
     '''
     cursor.execute(budget_table)
 
+    daily_transaction_total = '''
+    CREATE TABLE IF NOT EXISTS daily_total (
+    id INTEGER PRIMARY KEY,
+    account TEXT NOT NULL,
+    account_type TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    amount FLOAT DEFAULT 0,
+    transaction_count INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(account, account_type, day, month, year),
+    FOREIGN KEY (account) REFERENCES accounts(account) ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (account_type) REFERENCES account_types(account_type) ON UPDATE CASCADE ON DELETE CASCADE
+    );
+    '''
+    cursor.execute(daily_transaction_total)
+
     transaction_table = '''
     CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY,
@@ -2571,6 +2610,65 @@ def offline_startup():
                     ELSE 1
                 END
         WHERE account = NEW.to_account;
+
+        INSERT INTO daily_total (account,account_type,day,month,year,amount,transaction_count) VALUES (
+            NEW.from_account,
+            NEW.from_account_type,
+            NEW.day,
+            NEW.month,
+            NEW.year,
+            CASE
+                WHEN NEW.from_account_type = 'assets'
+                    AND NEW.to_account_type IN ('assets','expenses','liabilities','equity')
+                    THEN -NEW.amount
+                
+                WHEN NEW.from_account_type = 'liabilities'
+                    AND NEW.to_account_type IN ('liabilities','expenses','equity')
+                    THEN -NEW.amount
+
+                WHEN NEW.from_account_type = 'equity'
+                    AND NEW.to_account_type IN ('assets','expenses')
+                    THEN -NEW.amount
+                
+                ELSE NEW.amount
+            END,
+            1
+            )
+            ON CONFLICT(account,account_type, day, month,year)
+            DO UPDATE SET amount = amount + EXCLUDED.amount,transaction_count = transaction_count + 
+                CASE
+                    WHEN NEW.to_account = NEW.from_account
+                    THEN 0
+                    ELSE 1
+                END;
+
+        INSERT INTO daily_total (account,account_type,day,month,year,amount,transaction_count) VALUES (
+            NEW.to_account,
+            NEW.to_account_type,
+            NEW.day,
+            NEW.month,
+            NEW.year,
+            CASE
+                WHEN NEW.to_account_type = 'liabilities'
+                    AND NEW.from_account_type = 'assets'
+                    THEN -NEW.amount
+
+                WHEN NEW.to_account_type = 'equity'
+                    AND NEW.from_account_type IN ('assets','liabilities')
+                    THEN -NEW.amount
+
+                ELSE NEW.amount
+            END,
+            1
+            )
+            ON CONFLICT(account,account_type, day, month,year)
+            DO UPDATE SET amount = amount + EXCLUDED.amount,transaction_count = transaction_count + 
+                CASE
+                    WHEN NEW.to_account = NEW.from_account
+                    THEN 0
+                    ELSE 1
+                END;
+
     END;
     '''
     remove_trigger = '''
@@ -2617,8 +2715,67 @@ def offline_startup():
                             ELSE 1
                         END
         WHERE account = OLD.to_account;
-    END;
-    '''
+
+        INSERT INTO daily_total (account,account_type,day,month,year,amount,transaction_count) VALUES (
+            OLD.from_account,
+            OLD.from_account_type,
+            OLD.day,
+            OLD.month,
+            OLD.year,
+            CASE
+                WHEN OLD.from_account_type = 'assets'
+                    AND OLD.to_account_type IN ('assets','expenses','liabilities','equity')
+                    THEN -OLD.amount
+                
+                WHEN OLD.from_account_type = 'liabilities'
+                    AND OLD.to_account_type IN ('liabilities','expenses','equity')
+                    THEN -OLD.amount
+
+                WHEN OLD.from_account_type = 'equity'
+                    AND OLD.to_account_type IN ('assets','expenses')
+                    THEN -OLD.amount
+                
+                ELSE OLD.amount
+            END,
+            1
+            )
+            ON CONFLICT(account,account_type, day, month,year)
+            DO UPDATE SET amount = amount - EXCLUDED.amount, transaction_count = transaction_count - 1;
+        DELETE FROM daily_total WHERE amount <= 0 AND transaction_count <= 0;
+
+        INSERT INTO daily_total (account,account_type,day,month,year,amount,transaction_count) VALUES (
+            OLD.to_account,
+            OLD.to_account_type,
+            OLD.day,
+            OLD.month,
+            OLD.year,
+            CASE
+                WHEN OLD.to_account_type = 'liabilities'
+                    AND OLD.from_account_type = 'assets'
+                    THEN -OLD.amount
+
+                WHEN OLD.to_account_type = 'equity'
+                    AND OLD.from_account_type IN ('assets','liabilities')
+                    THEN -OLD.amount
+
+                ELSE OLD.amount
+            END, 
+            CASE
+                WHEN OLD.to_account = OLD.from_account
+                THEN 0
+                ELSE 1
+            END
+            )
+            ON CONFLICT(account,account_type, day, month,year)
+            DO UPDATE SET amount = amount - EXCLUDED.amount, transaction_count = transaction_count - 
+                            CASE
+                                WHEN OLD.from_account = OLD.to_account 
+                                THEN 0
+                                ELSE 1
+                            END;
+        DELETE FROM daily_total WHERE amount <= 0 AND transaction_count <= 0;
+        END;
+        '''
     update_trigger = '''
     CREATE TRIGGER IF NOT EXISTS update_summary_after_update
     AFTER UPDATE ON transactions
@@ -2706,10 +2863,91 @@ def offline_startup():
                     ELSE 1
                 END
         WHERE account = NEW.to_account;
+
+        UPDATE daily_total
+        SET amount = amount - (
+            CASE
+                WHEN OLD.from_account_type = 'assets'
+                    AND OLD.to_account_type IN ('assets','expenses','liabilities','equity')
+                    THEN -OLD.amount 
+
+                WHEN OLD.from_account_type = 'liabilities'
+                    AND OLD.to_account_type IN ('liabilities','expenses','equity')
+                    THEN -OLD.amount
+
+                WHEN OLD.from_account_type = 'equity'
+                    AND OLD.to_account_type IN ('assets','expenses')
+                    THEN -OLD.amount
+                
+                ELSE OLD.amount
+            END
+            ),
+            transaction_count = transaction_count - 1
+        WHERE day = OLD.day AND month = OLD.month AND year = OLD.year AND account = OLD.from_account AND account_type = OLD.from_account_type;
+
+        UPDATE daily_total
+        SET amount = amount - (
+            CASE
+                WHEN OLD.to_account_type = 'liabilities'
+                    AND OLD.from_account_type = 'assets'
+                    THEN -OLD.amount
+
+                WHEN OLD.to_account_type = 'equity'
+                    AND OLD.from_account_type IN ('assets','liabilities')
+                    THEN -OLD.amount
+
+                ELSE OLD.amount
+            END
+            ),
+            transaction_count = transaction_count - 
+                CASE
+                    WHEN OLD.from_account = OLD.to_account THEN 0
+                    ELSE 1
+                END
+        WHERE day = OLD.day AND month = OLD.month AND year = OLD.year AND account = OLD.to_account AND account_type = OLD.to_account_type;
+
+        UPDATE daily_total
+        SET amount = amount + (
+            CASE
+                WHEN NEW.from_account_type = 'assets'
+                    AND NEW.to_account_type IN ('assets','expenses','liabilities','equity')
+                    THEN -NEW.amount 
+
+                WHEN NEW.from_account_type = 'liabilities'
+                    AND NEW.to_account_type IN ('liabilities','expenses','equity')
+                    THEN -NEW.amount
+
+                WHEN NEW.from_account_type = 'equity'
+                    AND NEW.to_account_type IN ('assets','expenses')
+                    THEN -NEW.amount
+                
+                ELSE NEW.amount
+            END
+            ),
+            transaction_count = transaction_count + 1
+        WHERE day = NEW.day AND month = NEW.month AND year = NEW.year AND account = NEW.from_account AND account_type = NEW.from_account_type;
+
+        UPDATE daily_total
+        SET amount = amount + (
+            CASE
+                WHEN NEW.to_account_type = 'liabilities'
+                    AND NEW.from_account_type = 'assets'
+                    THEN -NEW.amount
+
+                WHEN NEW.to_account_type = 'equity'
+                    AND NEW.from_account_type IN ('assets','liabilities')
+                    THEN -NEW.amount
+
+                ELSE NEW.amount
+            END
+            ),
+            transaction_count = transaction_count + 
+                CASE
+                    WHEN NEW.from_account = NEW.to_account THEN 0
+                    ELSE 1
+                END
+        WHERE day = NEW.day AND month = NEW.month AND year = NEW.year AND account = NEW.to_account AND account_type = NEW.to_account_type;
     END;
-    '''
-    update_trigger_account = '''
-    
     '''
     cursor.execute(insert_trigger)
     cursor.execute(remove_trigger)
@@ -2734,8 +2972,13 @@ def app_startup():
 def stress_test():
     connect = sql.connect('database.db')
     cursor = connect.cursor()
+    dates = date(2022,8,1)
     for i in range(1000):
-        cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',['assets','cash','liabilities','loansZ',20,5,2000,'STRESS TEST',i])
+        ints = random.randint(10,200000)
+        current_date = dates + timedelta(days=i)
+        date_str = current_date.strftime("%d-%m-%Y")
+        date_list = date_str.split('-')
+        cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',['assets','cash','liabilities','loansZ',date_list[0],date_list[1],date_list[2],'STRESS TEST',ints])
 
     connect.commit()
     connect.close()

@@ -1,7 +1,7 @@
 import tkinter as tkinter
 from tkinter import Label,LabelFrame,Entry,Frame,Button,Canvas,BooleanVar,END,Tk,Widget,messagebox,Toplevel
 from winsound import MessageBeep, MB_OK
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.figure import Figure
 from matplotlib import font_manager, rcParams
 from tkinter import ttk as ttk
@@ -667,15 +667,20 @@ class API:
                 window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
                 return False, []
             
-            date1 = datetime.strptime(start_date,'%d-%m-%Y')
-            date2 = datetime.strptime(end_date,'%d-%m-%Y')
+            try:
+                date1 = datetime.strptime(start_date,'%d-%m-%Y')
+                date2 = datetime.strptime(end_date,'%d-%m-%Y')
+            except Exception:
+                error_msg_widget.configure(fg=error_color,text='Invalid Date format , format = 00-00-0000 (eg.20-04-2025)')
+                window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+                return False, []
 
             if date1 > date2:
                 error_msg_widget.configure(fg=error_color,text='Start date is bigger than End date!')
                 window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
                 return False, []            
         except Exception as e:
-            error_msg_widget.configure(fg=error_color,text=str(e))
+            error_msg_widget.configure(fg=error_color,text='Invalid Date format (eg.20-04-2025)')
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
         
@@ -685,7 +690,7 @@ class API:
             return False, []
         
         if graph_type == 'Amount':graph_type='amount,'
-        else: graph_type = 'transaction_count'
+        else: graph_type = 'transaction_count,'
 
         query = f"""
         SELECT {graph_type}day,month,year FROM daily_total
@@ -694,10 +699,16 @@ class API:
             printf('%02d', month) || '-' ||
             printf('%02d', day)) BETWEEN ? AND ?
         """
-        start_date_sql = datetime.strptime(start_date, "%d-%m-%Y").strftime("%Y-%m-%d")
-        end_date_sql = datetime.strptime(end_date, "%d-%m-%Y").strftime("%Y-%m-%d")
-        data = [start_date_sql,end_date_sql]
-        if account != '\u200BEnter Here' and account_type != '':
+        try:
+            start_date_sql = datetime.strptime(start_date, "%d-%m-%Y").strftime("%Y-%m-%d")
+            end_date_sql = datetime.strptime(end_date, "%d-%m-%Y").strftime("%Y-%m-%d")
+            data = [start_date_sql,end_date_sql]
+        except:
+            error_msg_widget.configure(fg=error_color,text='Invalid Date format (eg.20-04-2025)')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False, []
+        
+        if account != '' and account_type != '':
             query += 'AND account = ?'
             data.append(account)
 
@@ -716,15 +727,14 @@ class API:
             date1 = datetime.strptime(start_date, "%d-%m-%Y")
             date2 = datetime.strptime(end_date, "%d-%m-%Y")
             days_difference = abs((date2 - date1).days) + 1
-            mid_date = date1 + timedelta(days=days_difference // 2)
+            current_date = date1
+            date_list = []
 
-            # Calculate the difference in days
-            date_list = [0] * days_difference
-            date_list[0] = date1.strftime("%d-%m-%Y")
-            date_list[days_difference//2] = mid_date.strftime("%d-%m-%Y")
-            date_list[-1] = date2.strftime("%d-%m-%Y")
+            while current_date <= date2:
+                date_list.append(current_date)
+                current_date += timedelta(days=1)
+
             res = [[0.0]*days_difference, date_list]
-            print(res)
 
             for i in data_list:
                 i = list(i)
@@ -737,7 +747,6 @@ class API:
             error_msg_widget.configure(fg=error_color,text=str(e))
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
-        print(res)
         return True , res
 
 class GUI:
@@ -2307,16 +2316,32 @@ def build_accounting_page_category(master):
 
     # Right Frmae
     def graph_plotting():
-        status, data = api.offline_graph_plotting(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1)
+        line_color = accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2.get()
+        if line_color == '':
+            accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1.configure(text='Graph Line Color Needed!')
+            window.after(3000,lambda: accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1.configure(text=''))
+            return
+        
+        status, data = api.offline_graph_plotting(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1)
         if status:
-            ax.clear()
-            ax.plot(data[1],data[0], marker='o', linestyle='-', color='blue')
+            ax.plot(data[1],data[0], marker='.', linestyle='-', color=line_color,label = f'= {accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3.get()}, {accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4.get()}')
             ax.set_xlabel('Date')
             ax.set_ylabel('Amount' )
             ax.set_title('Daily Data')
+            ax.set_xticks([data[1][0],data[1][len(data[1])//3],data[1][len(2*data[1])//3],data[1][-1]])
+            ax.legend(loc = 'lower right', fontsize=5)
+            for text in ax.legend().get_texts():
+                text.set_color("black")
             canvas.draw_idle()
         else:
             print('failed')
+    def set_custom_combobox_value(widget,fetched_widget,setup):
+        if not setup:
+            widget.set('')
+        value = fetched_widget.get()
+        if len(value) > 0:
+            placed_value = api.offline_fetch_account_from_type(value)
+            widget.configure(values=placed_value)
     accountingpage_subframe2_frame3_categorypage_rightframe = Frame(accountingpage_subframe2_frame3_categorypage, background=sub_lightdark)
     accountingpage_subframe2_frame3_categorypage_rightframe.grid(column=1,row=0,sticky='nsew',padx=[5,0])
     accountingpage_subframe2_frame3_categorypage_rightframe.grid_columnconfigure(0,weight=1)
@@ -2328,7 +2353,8 @@ def build_accounting_page_category(master):
     fig = Figure(figsize=(1,1), dpi=100)
     fig.patch.set_facecolor(color=sub_lightdark)
     ax = fig.add_subplot(111)
-    ax.set_facecolor(sub_lightdark)
+    ax.grid(True,'major',color='black', linestyle='-', linewidth=1)
+    ax.set_facecolor('white')
     ax.spines['top'].set_color(sub_lightdark)
     ax.spines['bottom'].set_color("white")
     ax.spines['left'].set_color("white")
@@ -2391,26 +2417,37 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20),values=['Amount','Entry Count'])
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1.grid(column=2,row=0,sticky='nsew',pady=5,padx=[0,5])
 
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label2 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text='Account', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label2 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text='Graph Line Color', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label2.grid(column=0,row=2,sticky='nw',pady=5,padx=3)
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal2 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal2.grid(column=1,row=2,sticky='nw',pady=5,padx=3)
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2 = Entry(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, background = light_dark, fg = sub_textcolor,font=('monogram',20),disabledbackground=light_dark,disabledforeground=text_color)
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2.insert(0,'\u200BEnter Here')
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2.bind('<FocusIn>', lambda event: entry_text(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2,['\u200BEnter Here']))
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2.bind('<FocusOut>', lambda event: entry_text(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2,['\u200BEnter Here'],True,'\u200BEnter Here'))
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_entry2.grid(column=2,row=2,sticky='new',pady=5,padx=[0,5])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20),values= ['',"blue", "green", "red", "cyan", "magenta", "yellow", "black", "orange","purple", "brown", "pink", "gray", "olive", "teal", "navy"])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2.grid(column=2,row=2,sticky='nsew',pady=5,padx=[0,5])
 
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label3 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text='Account Type', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label3.grid(column=0,row=1,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label3.grid(column=0,row=3,sticky='nw',pady=5,padx=3)
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal3 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal3.grid(column=1,row=1,sticky='nw',pady=5,padx=3)
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20),values=['','assets','liabilities','equity','revenue','expenses'])
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2.grid(column=2,row=1,sticky='nsew',pady=5,padx=[0,5])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal3.grid(column=1,row=3,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20),values=['','assets','liabilities','equity','revenue','expenses'])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3.grid(column=2,row=3,sticky='nsew',pady=5,padx=[0,5])
 
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_button1 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2,text='Plot Graph',background=light_dark,fg=text_color,font=(custom_font,20), command = graph_plotting)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label4 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text='Account', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label4.grid(column=0,row=4,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal4 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal4.grid(column=1,row=4,sticky='nw',pady=5,padx=3)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3.bind('<<ComboboxSelected>>', lambda event: [set_custom_combobox_value(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3,False),accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4.set('')])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4.grid(column=2,row=4,sticky='nsew',pady=5,padx=[0,5])
 
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_button1.grid(column=0,row=2,sticky='nsew')
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2,background=sub_lightdark)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1.grid_columnconfigure([0,1],weight=1,uniform='a')
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1.grid(column=0,row=2,sticky='nsew')
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button1 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1,text='Plot Graph',background=light_dark,fg=text_color,font=(custom_font,20), command = graph_plotting)
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button1.grid(column=1,row=0,sticky='nsew')
+
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button2 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1,text='Clear Graph',background=light_dark,fg=text_color,font=(custom_font,20), command = lambda: [ax.clear(),ax.grid(True,'major',color='black', linestyle='-', linewidth=1),canvas.draw_idle()])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button2.grid(column=0,row=0,sticky='nsew')
 
     return accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview, accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2
 
@@ -2450,6 +2487,7 @@ def load_page(page,auto_login_email=None,auto_login_password=None):# To load nee
 
         frame = globals()[page]
         frame.pack(fill='both', expand = True)
+        window.update_idletasks()
 
 
         window.after(1000, lambda: loading_page.place_forget())
@@ -2978,7 +3016,7 @@ def stress_test():
         current_date = dates + timedelta(days=i)
         date_str = current_date.strftime("%d-%m-%Y")
         date_list = date_str.split('-')
-        cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',['assets','cash','liabilities','loansZ',date_list[0],date_list[1],date_list[2],'STRESS TEST',ints])
+        cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',['assets','TEST','liabilities','loansZ',date_list[0],date_list[1],date_list[2],'STRESS TEST',ints])
 
     connect.commit()
     connect.close()

@@ -341,16 +341,19 @@ class API:
 
         if not all([from_type, from_account, to_type, to_account, date, amount, description]):
             error_msg_widget.configure(text='Please fill in all fields')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
 
         try:
             amount = int(amount)
         except Exception:
             error_msg_widget.configure(text='Make sure amount is an integer')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
         
         if amount < 0:
             error_msg_widget.configure(text='Please input a positive value in amount')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
         
         try:
@@ -358,6 +361,7 @@ class API:
             date = datetime.strftime(date,'%d-%m-%Y')
         except Exception as e:
             error_msg_widget.configure(text='Invalid Date make sure its DD-MM-YY format and be in calendar')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
 
 
@@ -400,10 +404,16 @@ class API:
         amount = amount_widget.get()
         description = description_widget.get()
 
+        if not from_type or not from_account or not to_type or not to_account or not date or not amount or not description:
+            error_msg_widget.configure(text='Please Fill in All the Fields')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False,[]
+
         try:
             amount = int(amount)
         except Exception:
             error_msg_widget.configure(text='Invalid number inputted in ammount entry')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False,[]
 
         try:
@@ -411,6 +421,7 @@ class API:
             date = datetime.strftime(date,'%d-%m-%Y')
         except Exception as e:
             error_msg_widget.configure(text='Invalid Date make sure its DD-MM-YY format and be in calendar')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False,[]
 
         connect = sql.connect('database.db')
@@ -644,12 +655,13 @@ class API:
         
         return True, res_lists
     
-    def offline_graph_plotting(self,start_date_widget,end_date_widget,account_type_widget,account_widget,graph_type_widget,error_msg_widget):
+    def offline_graph_plotting(self,start_date_widget,end_date_widget,account_type_widget,account_widget,graph_type_widget,error_msg_widget,graph_line_color_widget):
         start_date = start_date_widget.get()
         end_date = end_date_widget.get()
         account_type = account_type_widget.get()
         account = account_widget.get()
-        graph_type = graph_type_widget.get()
+        graph_types = graph_type_widget.get()
+        graph_line_color = graph_line_color_widget.get()
         
 
         #Date checking
@@ -657,39 +669,39 @@ class API:
             if start_date in ['\u200BDD-MM-YY',''] and  end_date in ['\u200BDD-MM-YY', '']:
                 error_msg_widget.configure(fg=error_color,text='Please fill in the dates')
                 window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
-                return False, []
+                return False, [], '', ''
             
             start_date_list = start_date.split('-')
             end_date_list = end_date.split('-')
 
             if not len(start_date_list) == 3 or not len(end_date_list) == 3:
-                error_msg_widget.configure(fg=error_color,text='Please fill in the dates')
+                error_msg_widget.configure(fg=error_color,text='Date is incomplete (eg.20-04-2025)')
                 window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
-                return False, []
+                return False, [], '', ''
             
             try:
                 date1 = datetime.strptime(start_date,'%d-%m-%Y')
                 date2 = datetime.strptime(end_date,'%d-%m-%Y')
             except Exception:
-                error_msg_widget.configure(fg=error_color,text='Invalid Date format , format = 00-00-0000 (eg.20-04-2025)')
+                error_msg_widget.configure(fg=error_color,text='Invalid Date format (eg.20-04-2025)')
                 window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
-                return False, []
+                return False, [], '', ''
 
             if date1 > date2:
                 error_msg_widget.configure(fg=error_color,text='Start date is bigger than End date!')
                 window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
-                return False, []            
+                return False, [], '', ''         
         except Exception as e:
             error_msg_widget.configure(fg=error_color,text='Invalid Date format (eg.20-04-2025)')
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
-            return False, []
+            return False, [], '', ''
         
-        if account_type == '\u200BEnter Here' or account_type == '' or graph_type == '':
+        if account_type == '\u200BEnter Here' or account_type == '' or graph_types == '' or graph_line_color == '':
             error_msg_widget.configure(fg=error_color,text='Please fill in all the fields')
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
-            return False, []
+            return False, [], '', ''
         
-        if graph_type == 'Amount':graph_type='amount,'
+        if graph_types in ['Amount', 'Total Amount']:graph_type='amount,'
         else: graph_type = 'transaction_count,'
 
         query = f"""
@@ -706,24 +718,33 @@ class API:
         except:
             error_msg_widget.configure(fg=error_color,text='Invalid Date format (eg.20-04-2025)')
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
-            return False, []
+            return False, [], '', ''
+        
+        if graph_types == 'Total Amount':
+            query2 = '''SELECT COALESCE(SUM(amount), 0) AS total FROM daily_total WHERE (CAST(year AS TEXT)|| '-' || printf('%02d', month) || '-' || printf('%02d', day)) < ? '''
+            data2 = [start_date_sql]
         
         if account != '' and account_type != '':
             query += 'AND account = ?'
             data.append(account)
+            if graph_types == 'Total Amount':
+                query2 += 'AND account = ?'
+                data2.append(account)
 
         if account_type:
             query += ' AND account_type = ?'
             data.append(account_type)
+            if graph_types == 'Total Amount':
+                query2 += 'AND account_type = ?'
+                data2.append(account_type)
 
-        query += '\nORDER BY year DESC, month DESC, day DESC'
+        query += '\nORDER BY year ASC, month ASC, day ASC'
         
         try:
             connect = sql.connect('database.db')
             cursor = connect.cursor()
             cursor.execute(query,data)
             data_list = cursor.fetchall()
-            connect.close()
             date1 = datetime.strptime(start_date, "%d-%m-%Y")
             date2 = datetime.strptime(end_date, "%d-%m-%Y")
             days_difference = abs((date2 - date1).days) + 1
@@ -735,19 +756,39 @@ class API:
                 current_date += timedelta(days=1)
 
             res = [[0.0]*days_difference, date_list]
+            if graph_types == 'Total Amount':
+                cursor.execute(query2, data2)
+                Amount_till_start_date = int(cursor.fetchone()[0])
+                print(Amount_till_start_date)
 
             for i in data_list:
                 i = list(i)
-                date1 = datetime.strptime(start_date, "%d-%m-%Y")
                 date2 = datetime.strptime(f'{i[1]}-{i[2]}-{i[3]}', "%d-%m-%Y")
                 days_difference = abs((date2 - date1).days)
-                res[0][days_difference] += abs(i[0])
+                if graph_types == 'Total Amount':
+                    Amount_till_start_date += i[0]
+                    res[0][days_difference] = Amount_till_start_date
+                else:
+                    res[0][days_difference] += abs(i[0])
+
+            last_value = 0
+            if graph_types == 'Total Amount':
+                for index,value in enumerate(res[0]):
+                    if value != 0.0 :
+                        last_value = value
+                    else:
+                        res[0][index] =  last_value
+
+            connect.close()
 
         except Exception as e:
             error_msg_widget.configure(fg=error_color,text=str(e))
+            print(e)
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
-            return False, []
-        return True , res
+            return False, [], '', ''
+        error_msg_widget.configure(fg=success_color,text='Successfully Plot the Graph')
+        window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+        return True , res, graph_types,graph_line_color
 
 class GUI:
     def __init__(self):
@@ -837,7 +878,6 @@ def build_bootoption_page():
 
     bootoption_page_frame1_frame2_button1 = Button(bootoption_page_frame1_frame2,text='Use Online Mode',foreground=text_color,background=light_dark,font=(custom_font,20,'bold'))
     bootoption_page_frame1_frame2_button1.pack(side='top',fill='both',expand=1,padx=10,pady=(0,10))
-
 def build_signup_page():
     signuppage_frame = Frame(signup_page, background=sub_lightdark)
     pack_center(signup_page,signuppage_frame,light_dark)
@@ -1079,7 +1119,6 @@ def build_signup_initialise_page():
         signup_initialise_page_mainframe_button2.configure(command= offline_setup)
     else:
         print('hello world')
-
 def build_login_page(auto_login_email=None,auto_login_password=None):
     loginpage_frame = Frame(login_page, background=sub_lightdark)
     pack_center(login_page,loginpage_frame,light_dark)
@@ -1174,6 +1213,9 @@ def build_accounting_page():
 
         #accounting Transaction setup Function
         elif targeted_frame == accountingpage_subframe2_frame2:
+            transaction_label_frame.grid_forget()
+            transaction_button_frame.grid(column=0,row=0,sticky='nsew')
+            transaction_data_frame.grid_forget()
             transaction_id = transaction_treeview.get_children()
             transaction_temp_list = [transaction_treeview.item(item,'values')[1] for item in transaction_id]
             if len(transaction_id) < 1:
@@ -1207,14 +1249,14 @@ def build_accounting_page():
 
     #Transactions page
     accountingpage_subframe2_frame2 = Frame(accountingpage_mainframe2,background=light_dark)
-    transaction_treeview, transaction_error_msg = build_accounting_page_transaction(accountingpage_subframe2_frame2)
+    transaction_treeview, transaction_error_msg,transaction_label_frame,transaction_button_frame,transaction_data_frame = build_accounting_page_transaction(accountingpage_subframe2_frame2)
 
     #Category page
     accountingpage_subframe2_frame3 = Frame(accountingpage_mainframe2,background='white')
     category_treeview,category_data_label1 = build_accounting_page_category(accountingpage_subframe2_frame3)
 
-
-    accountingpage_subframe2_frame4 = Frame(accountingpage_mainframe2,background=sub_maincolor)
+    accountingpage_subframe2_frame4 = Frame(accountingpage_mainframe2,background=light_dark)
+    build_accounting_page_budget(accountingpage_subframe2_frame4)
 
     accountingpage_subframe2_frame5 = Frame(accountingpage_mainframe2,background=sub_maincolor)
 
@@ -1916,8 +1958,7 @@ def build_accounting_page_transaction(master):
     master.grid_rowconfigure(0,weight=1)
     master.grid_rowconfigure([1,2],weight=0)
     master.grid_columnconfigure(0,weight=1)
-    return accountingpage_subframe2_frame2_treeview, accountingpage_subframe2_frame2_messages_label1
-
+    return accountingpage_subframe2_frame2_treeview, accountingpage_subframe2_frame2_messages_label1,accountingpage_subframe2_frame2_infopage_frame2,accountingpage_subframe2_frame2_infopage_dataframe,accountingpage_subframe2_frame2_buttonpage
 def build_accounting_page_category(master):
     def reset_button_page():
         accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.unbind('<<TreeviewSelect>>')
@@ -2136,8 +2177,8 @@ def build_accounting_page_category(master):
     master.grid_rowconfigure(0,weight=1)
     accountingpage_subframe2_frame3_categorypage = Frame(master, background=sub_lightdark)
     accountingpage_subframe2_frame3_categorypage.grid(column=0,row=0,sticky='nsew')
-    accountingpage_subframe2_frame3_categorypage.grid_columnconfigure(0,weight=4,uniform='a')
-    accountingpage_subframe2_frame3_categorypage.grid_columnconfigure(1,weight=3,uniform='a')
+    accountingpage_subframe2_frame3_categorypage.grid_columnconfigure(0,weight=13,uniform='a')
+    accountingpage_subframe2_frame3_categorypage.grid_columnconfigure(1,weight=11,uniform='a')
     accountingpage_subframe2_frame3_categorypage.grid_rowconfigure(0,weight=1)
 
     #Left Frame
@@ -2316,52 +2357,55 @@ def build_accounting_page_category(master):
 
     # Right Frmae
     def graph_plotting():
-        line_color = accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2.get()
-        if line_color == '':
-            accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1.configure(text='Graph Line Color Needed!')
-            window.after(3000,lambda: accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1.configure(text=''))
-            return
-        
-        status, data = api.offline_graph_plotting(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1)
+        status, data, graph_type, line_color = api.offline_graph_plotting(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe1_entry2,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox2)
         if status:
-            ax.plot(data[1],data[0], marker='.', linestyle='-', color=line_color,label = f'= {accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3.get()}, {accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4.get()}')
-            ax.set_xlabel('Date')
-            ax.set_ylabel('Amount' )
-            ax.set_title('Daily Data')
+            ax.plot(data[1],data[0], marker='.', linestyle='-', color=line_color,label = f'= {graph_type} ({accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3.get()},{accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4.get()})')
             ax.set_xticks([data[1][0],data[1][len(data[1])//3],data[1][len(2*data[1])//3],data[1][-1]])
             ax.legend(loc = 'lower right', fontsize=5)
             for text in ax.legend().get_texts():
                 text.set_color("black")
+                text.set_fontsize(15)
             canvas.draw_idle()
-        else:
-            print('failed')
     def set_custom_combobox_value(widget,fetched_widget,setup):
         if not setup:
             widget.set('')
         value = fetched_widget.get()
         if len(value) > 0:
             placed_value = api.offline_fetch_account_from_type(value)
-            widget.configure(values=placed_value)
+            widget.configure(values=[''] + placed_value)
+    def clear_graph_plot():
+        ax.clear()
+        ax.grid(True,'major',color='black', linestyle='-', linewidth=1)
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Amount' )
+        ax.set_title('Daily Data')
+        canvas.draw_idle()
     accountingpage_subframe2_frame3_categorypage_rightframe = Frame(accountingpage_subframe2_frame3_categorypage, background=sub_lightdark)
     accountingpage_subframe2_frame3_categorypage_rightframe.grid(column=1,row=0,sticky='nsew',padx=[5,0])
     accountingpage_subframe2_frame3_categorypage_rightframe.grid_columnconfigure(0,weight=1)
     accountingpage_subframe2_frame3_categorypage_rightframe.grid_rowconfigure(0,weight=1)
 
     accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe = Frame(accountingpage_subframe2_frame3_categorypage_rightframe, background=light_dark)
+    accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe.grid_rowconfigure(0,weight=1)
+    accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe.grid_columnconfigure(0,weight=1)
     accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe.grid(column=0,row=0,sticky='nsew')
+    accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe.grid_propagate(False)
 
-    fig = Figure(figsize=(1,1), dpi=100)
+    fig = Figure(figsize=(10,4), dpi=100)
     fig.patch.set_facecolor(color=sub_lightdark)
     ax = fig.add_subplot(111)
     ax.grid(True,'major',color='black', linestyle='-', linewidth=1)
     ax.set_facecolor('white')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Amount' )
+    ax.set_title('Daily Data')
     ax.spines['top'].set_color(sub_lightdark)
     ax.spines['bottom'].set_color("white")
     ax.spines['left'].set_color("white")
     ax.spines['right'].set_color(sub_lightdark)
     
     canvas = FigureCanvasTkAgg(fig, master =accountingpage_subframe2_frame3_categorypage_rightframe_canvasframe )
-    canvas.get_tk_widget().pack(side='top',expand=1,fill='both',padx=3,pady=3)
+    canvas.get_tk_widget().grid(column=0,row=0,sticky='nsew',padx=3,pady=3)
 
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe, background=light_dark,height=346)
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1.grid_propagate(False)
@@ -2414,7 +2458,7 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label1.grid(column=0,row=0,sticky='nw',pady=5,padx=3)
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal1 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal1.grid(column=1,row=0,sticky='nw',pady=5,padx=3)
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20),values=['Amount','Entry Count'])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20),values=['Amount','Total Amount','Entry Count'])
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox1.grid(column=2,row=0,sticky='nsew',pady=5,padx=[0,5])
 
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_label2 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2, text='Graph Line Color', background=sub_lightdark, fg=text_color,font=('monogram',20))
@@ -2437,6 +2481,7 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_equal4.grid(column=1,row=4,sticky='nw',pady=5,padx=3)
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4 = ttk.Combobox(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2,state='readonly',font = (custom_font,20))
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3.bind('<<ComboboxSelected>>', lambda event: [set_custom_combobox_value(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3,False),accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4.set('')])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4.bind('<FocusIn>', lambda event: set_custom_combobox_value(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4,accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox3,True))
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_labelframe2_combobox4.grid(column=2,row=4,sticky='nsew',pady=5,padx=[0,5])
 
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2,background=sub_lightdark)
@@ -2446,11 +2491,107 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button1 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1,text='Plot Graph',background=light_dark,fg=text_color,font=(custom_font,20), command = graph_plotting)
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button1.grid(column=1,row=0,sticky='nsew')
 
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button2 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1,text='Clear Graph',background=light_dark,fg=text_color,font=(custom_font,20), command = lambda: [ax.clear(),ax.grid(True,'major',color='black', linestyle='-', linewidth=1),canvas.draw_idle()])
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button2 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1,text='Clear Graph',background=light_dark,fg=text_color,font=(custom_font,20), command = clear_graph_plot)
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button2.grid(column=0,row=0,sticky='nsew')
 
     return accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview, accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2
+def build_accounting_page_budget(master):
+    master.grid_rowconfigure(0,weight=1)
+    master.grid_columnconfigure(0,weight=1)
 
+    accountingpage_subframe2_frame4_scrollbar = ttk.Scrollbar(master, orient='vertical', style= 'TScrollbar' )
+    accountingpage_subframe2_frame4_scrollbar.grid(column=1,row=0,sticky='nsew')
+    accountingpage_subframe2_frame4_canvas = Canvas(master,background=light_dark,highlightthickness=0,yscrollcommand=accountingpage_subframe2_frame4_scrollbar.set)
+    accountingpage_subframe2_frame4_canvas.grid(column=0,row=0,sticky='nsew')
+    accountingpage_subframe2_frame4_scrollbar.configure(command =accountingpage_subframe2_frame4_canvas.yview)
+
+    #First Frame Budget
+    accountingpage_subframe2_frame4_canvas_frame1 = Frame(accountingpage_subframe2_frame4_canvas, background='red',height=760)
+    window_id = accountingpage_subframe2_frame4_canvas.create_window((0,0),window=accountingpage_subframe2_frame4_canvas_frame1,anchor='nw')
+    accountingpage_subframe2_frame4_canvas_frame1.grid_propagate(False)
+    accountingpage_subframe2_frame4_canvas_frame1.grid_columnconfigure(0,weight=1)
+    accountingpage_subframe2_frame4_canvas_frame1.grid_rowconfigure(0,weight=1)
+
+    #SUB FRAME FIRST FRAME
+    accountingpage_subframe2_frame4_canvas_frame1_frame1 = Frame(accountingpage_subframe2_frame4_canvas_frame1,background=sub_lightdark)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1.grid(column=0,row=0,sticky='nsew')
+    accountingpage_subframe2_frame4_canvas_frame1_frame1.grid_columnconfigure(0,weight=1)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1.grid_rowconfigure(0,weight=1)
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_scrollbar = ttk.Scrollbar(accountingpage_subframe2_frame4_canvas_frame1_frame1)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_scrollbar.grid(column=1,row=0,sticky='nsew')
+
+    headings = ('No.','ID','Type','Account','Duration','Budget Value', 'Actual Value', 'Difference')
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1 = ttk.Treeview(accountingpage_subframe2_frame4_canvas_frame1_frame1,columns=headings, show='headings',yscrollcommand=accountingpage_subframe2_frame4_canvas_frame1_frame1_scrollbar)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.grid(column=0,row=0,sticky='nsew')
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_scrollbar.configure(command=accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.yview)
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.column('No.',anchor='w',stretch=True,minwidth=20,width=20)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.heading('No.',text='No.')
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.column('ID',anchor='w',stretch=True,minwidth=20,width=20)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.heading('ID',text='ID')
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.column('Type',anchor='w',stretch=True,minwidth=80,width=80)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.heading('Type',text='Type')
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.column('Account',anchor='w',stretch=True,minwidth=80,width=80)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.heading('Account',text='Account')
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.column('Duration',anchor='w',stretch=True,minwidth=80,width=80)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.heading('Duration',text='Duration')
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.column('Budget Value',anchor='w',stretch=True,minwidth=100,width=100)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.heading('Budget Value',text='Budget Value')
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.column('Actual Value',anchor='w',stretch=True,minwidth=100,width=100)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.heading('Actual Value',text='Actual Value')
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.column('Difference',anchor='w',stretch=True,minwidth=100,width=100)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.heading('Difference',text='Difference')
+
+    #Frame 1 
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1 = Frame(accountingpage_subframe2_frame4_canvas_frame1_frame1,background=light_dark)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1.grid(column=0,row=1,sticky='nsew',pady=[5,0],columnspan=2)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1.grid_columnconfigure(0,weight=1)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1.grid_rowconfigure(1,weight=1)
+
+    #Frame 1 Message Frame
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame1 = Frame(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1,background=sub_lightdark)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame1.grid(column=0,row=0,sticky='nsew',padx=3,pady=3)
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_label1 = Label(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame1,fg=error_color,background=sub_lightdark,font=(custom_font,20),text='Hello test')
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_label1.pack(side='left')
+
+    #FRAME 1 BUTTON FRAME
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2 = Frame(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1,background=sub_lightdark, height=305)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2.grid_propagate(False)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2.grid_columnconfigure([0,1],weight=1)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2.grid_rowconfigure(0,weight=1)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2.grid(column=0,row=1,sticky='nsew',padx=3,pady=[0,3])
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe1 = LabelFrame(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2,background=sub_lightdark,text='Budget Data',font=(custom_font,20,'bold'),fg=text_color)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe1.grid(column=0,row=0,sticky='nsew',padx=3,pady=3)
+
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe2 = LabelFrame(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2,background=sub_lightdark,text='Input Data',font=(custom_font,20,'bold'),fg=text_color)
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe2.grid(column=1,row=0,sticky='nsew',padx=3,pady=3)
+
+    #Second Frame Budget
+    accountingpage_subframe2_frame4_canvas_frame2 = Frame(accountingpage_subframe2_frame4_canvas, background='blue',height=760)
+    window_id2 = accountingpage_subframe2_frame4_canvas.create_window((0,760),window=accountingpage_subframe2_frame4_canvas_frame2,anchor='nw')
+    accountingpage_subframe2_frame4_canvas_frame2.pack_propagate(False)
+
+    accountingpage_subframe2_frame4_canvas_frame2_label = Label(accountingpage_subframe2_frame4_canvas_frame2,text='TEST',fg=light_dark, font=(custom_font,20))
+    accountingpage_subframe2_frame4_canvas_frame2_label.pack(side='top',expand=1,fill='both')
+
+    def resize_inner(event):
+        print('called')
+        accountingpage_subframe2_frame4_canvas.itemconfig(window_id, width = event.width)
+        accountingpage_subframe2_frame4_canvas.itemconfig(window_id2, width = event.width)
+
+    accountingpage_subframe2_frame4_canvas.bind("<Configure>", resize_inner)
+    accountingpage_subframe2_frame4_canvas.configure(scrollregion=(0,0,0,1520))
 
 #Functions to make life easier
 def pack_center(master,widget,color):# exactly what it sounds to pack_center
@@ -2506,14 +2647,6 @@ def entry_text(widget=Widget,text_array=(),add=False, add_text=None,password=Fal
             widget.configure(foreground = text_color)
             if password:
                 widget.configure(show='*')
-
-def validate_date(entry_widget,error_msg_widget):
-    date_string = entry_widget.get()
-    try:
-        datetime.striptime(date_string, '%d-%m-%Y')
-    except ValueError:
-        error_msg_widget.configure(text='Invalid date format. Please use DD-MM-YYYY.')
-
 def online_startup():
     setattr(state,'is_online',True)
     if path.exists('config.json') and path.isfile('config.json'):
@@ -2557,6 +2690,8 @@ def offline_startup():
     CREATE TABLE IF NOT EXISTS budget (
     id INTEGER PRIMARY KEY,
     account_id INTEGER NOT NULL,
+    duration TEXT NOT NULL CHECK(duration IN ('day','month','year','week')),
+    budget_value_type TEXT NOT NULL CHECK (budget_value in ('percentage','absolute')),
     budget_value INT NOT NULL,
     description TEXT NOT NULL CHECK(length(description) <= 50),
 
@@ -2779,7 +2914,6 @@ def offline_startup():
             )
             ON CONFLICT(account,account_type, day, month,year)
             DO UPDATE SET amount = amount - EXCLUDED.amount, transaction_count = transaction_count - 1;
-        DELETE FROM daily_total WHERE amount <= 0 AND transaction_count <= 0;
 
         INSERT INTO daily_total (account,account_type,day,month,year,amount,transaction_count) VALUES (
             OLD.to_account,
@@ -2811,7 +2945,7 @@ def offline_startup():
                                 THEN 0
                                 ELSE 1
                             END;
-        DELETE FROM daily_total WHERE amount <= 0 AND transaction_count <= 0;
+        DELETE FROM daily_total WHERE amount = 0 AND transaction_count = 0;
         END;
         '''
     update_trigger = '''
@@ -3010,13 +3144,14 @@ def app_startup():
 def stress_test():
     connect = sql.connect('database.db')
     cursor = connect.cursor()
+    cursor.execute('PRAGMA foreign_keys = ON')
     dates = date(2022,8,1)
     for i in range(1000):
-        ints = random.randint(10,200000)
+        ints = random.randint(10,100)
         current_date = dates + timedelta(days=i)
         date_str = current_date.strftime("%d-%m-%Y")
         date_list = date_str.split('-')
-        cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',['assets','TEST','liabilities','loansZ',date_list[0],date_list[1],date_list[2],'STRESS TEST',ints])
+        cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',['revenue','income','assets','cash',date_list[0],date_list[1],date_list[2],'STRESS TEST',ints])
 
     connect.commit()
     connect.close()

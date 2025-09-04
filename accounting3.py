@@ -17,6 +17,7 @@ from ctypes import windll
 from datetime import datetime, date, timedelta
 import sqlite3 as sql
 import random 
+import numpy as np
 start = perf_counter()
 
 load_dotenv()
@@ -77,7 +78,7 @@ style.map(
     arrowcolor = [('readonly',sub_lightdark),('disabled',sub_lightdark)]
 )
 
-style.configure('Treeview',background = light_dark, foreground=main_color,font=('monogram',20,'bold'), fieldbackground=light_dark,borderwidth=0)
+style.configure('Treeview',background = light_dark, foreground=main_color,font=('monogram',20,'bold'), fieldbackground=light_dark,borderwidth=0,row_height=25)
 style.configure('Treeview.Heading',background = sub_lightdark, foreground=main_color,font=('monogram',20))
 style.configure('TScrollbar',background = sub_lightdark, foreground= light_dark,arrowcolor=light_dark,troughcolor=light_dark)
 style.configure('TCombobox',background = mid_dark, fieldbackground = [('readonly', light_dark),('disabled',light_dark)],foreground=text_color,font=('monogram',20),arrowcolor=sub_lightdark)
@@ -331,16 +332,31 @@ class API:
             cursor.executemany('INSERT INTO accounts(account, account_type) VALUES(?,?)',lists)
             connect.commit()
 
+    def fetch_today_entry(self,treeview,extra_func=False):
+        today = date.today().strftime('%d-%m-%Y').split('-')
+        try:
+            connect = sql.connect('database.db')
+            cursor = connect.cursor()
+            cursor.execute('SELECT * FROM transactions WHERE day = ? AND month = ? AND year=?',today)
+
+            for index,value in enumerate(cursor.fetchall()):
+                treeview.insert('','end',values=[index+1] + list(value))
+            if extra_func:
+                extra_func(True)
+
+        except:
+            pass
+
     def offline_add_entry(self,from_type_widget,from_account_widget,to_type_widget,to_account_widget,error_msg_widget,date_widget,amount_widget,description_widget):
         from_type = from_type_widget.get()
         from_account = from_account_widget.get()
         to_type = to_type_widget.get()
         to_account = to_account_widget.get()
-        date= date_widget.get()
+        date = date_widget
         amount = amount_widget.get()
         description = description_widget.get()
 
-        if not all([from_type, from_account, to_type, to_account, date, amount, description]):
+        if not all([from_type, from_account, to_type, to_account, date, amount, description]) or date == '---':
             error_msg_widget.configure(text='Please fill in all fields')
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
@@ -356,11 +372,15 @@ class API:
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
         
-        if amount < 0:
-            error_msg_widget.configure(text='Please input a positive value in amount')
+        if amount <= 0:
+            error_msg_widget.configure(text='Please input an ammount more than 0')
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
-        
+
+        if len(description) > 50:
+            error_msg_widget.configure(text='Description is too long (max 50 characters)')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False, []
         try:
             date = datetime.strptime(date,'%d-%m-%Y')
             date = datetime.strftime(date,'%d-%m-%Y')
@@ -405,7 +425,7 @@ class API:
         from_account = from_account_widget.get()
         to_type = to_type_widget.get()
         to_account = to_account_widget.get()
-        date= date_widget.get()
+        date= date_widget
         amount = amount_widget.get()
         description = description_widget.get()
 
@@ -426,7 +446,7 @@ class API:
             return False, []
 
         if len(description) > 50:
-            error_msg_widget.configure(text='Description is too long')
+            error_msg_widget.configure(text='Description is too long (max 50 characters)')
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False, []
 
@@ -453,79 +473,22 @@ class API:
         connect.close()
 
         if search_return_list == True:
-            return True,[from_type,from_account,to_type,to_account,date,description,amount]
+            return True,[ids,from_type,from_account,to_type,to_account,date,description,amount]
         else:
             return True,[]
 
-    def offline_update_transaction(self,id_list,error_msg_widget):
-        connect = sql.connect('database.db')
-        cursor = connect.cursor()
-        cursor.execute('PRAGMA foreign_keys = ON;')
-        placeholders = ','.join('?' for _ in id_list)
-
-        try:
-            cursor.execute(f'SELECT * FROM transactions WHERE id IN ({placeholders})',id_list)
-            lists = cursor.fetchall()
-            res = []
-            for index,value in enumerate(lists):
-                join_date = '-'.join(str(x) for x in value[5:8])
-                res.append([index + 1,*value[0:5],join_date,*value[8:10]])
-
-        except Exception as e:
-            connect.close()
-            error_msg_widget.configure(fg=error_color,text=e)
-            return False, []
-        
-        connect.close()
-        return True, res
-
-    def offline_set_treeview_with_params(self,treeview,param_dict,search_return_list=False):
-        def function(widget_data,type_transform,column_name,query,params):
-            if widget_data != '':
-                try:
-                    updated_value = type_transform(widget_data)
-                    if column_name == 'description':
-                        query += f'AND {column_name} LIKE ?'
-                        params.append(f'%{updated_value}%')
-                    else:
-                        query += f" AND {column_name} = ?"
-                        params.append(updated_value)
-                except Exception as e:
-                    return ''
-            return query 
-
-        for children in treeview.get_children():
-            treeview.delete(children)
+    def offline_search_entry(self,from_type_widget,from_account_widget,to_type_widget,to_account_widget,error_msg_widget,date_widget,amount_widget,description_widget):
+        from_type = from_type_widget.get()
+        from_account = from_account_widget.get()
+        to_type = to_type_widget.get()
+        to_account = to_account_widget.get()
+        date= date_widget
+        amount = amount_widget.get()
+        description = description_widget.get()
 
         query = 'SELECT * FROM transactions WHERE 1=1'
-        params = []
-
-        connect = sql.connect('database.db')
-        cursor = connect.cursor()
-        cursor.execute('PRAGMA foreign_keys = ON;')
-
-        try:
-            for i in param_dict:
-                widget_name = param_dict[i]['widget_data']
-                type_convert = param_dict[i]['type']
-                column_name = i
-                query = function(widget_name,type_convert,column_name,query,params)
-
-        except Exception as e:
-            return ''
-
-        cursor.execute(query, params)
-        results = cursor.fetchall()
-        connect.commit()
-        connect.close()
-
-        if search_return_list:
-            return results
-        else:
-            for index,i in enumerate(results):
-                date = '-'.join([str(i[5]),str(i[6]),str(i[7])])
-                treeview.insert('','end',values=[index+1,i[0],i[1],i[2],i[3],i[4],date,i[8],i[9]])
-    
+        data = []
+        
     def offline_fetch_account_from_type(self,param):
         connect = sql.connect('database.db')
         cursor = connect.cursor()
@@ -548,6 +511,11 @@ class API:
 
         if types == '' or account in ['\u200BEnter Here','']:
             error_msg_widget.configure(fg=error_color,text='Please fill in all the Entry Fields')
+            window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
+            return False,[]
+        
+        if len(account) > 25:
+            error_msg_widget.configure(fg=error_color,text='Account Name is too long! (max 25 characters)')
             window.after(3000,lambda:error_msg_widget.configure(fg=error_color,text=''))
             return False,[]
         
@@ -1071,6 +1039,8 @@ class GUI:
         #Budget ID
         self.treeview_selected_row_budget = None
 
+        #Loading :()
+
 api = API()
 state = GUI()
 
@@ -1466,14 +1436,19 @@ def build_accounting_page():
 
         #Category setup function
         if targeted_frame == accountingpage_subframe2_frame3:
-            for item in category_treeview.get_children():
-                category_treeview.delete(item)
+            category_treeview.delete(*category_treeview.get_children())
 
             if getattr(state,'is_online') == False :
-                lists = api.offline_fetch_accounts()
-                for index,row in enumerate(lists):
-                    category_treeview.insert('','end',values=[*[index+1],*row])
-                category_data_label1.configure(text=len(lists))
+                try:
+                    lists = api.offline_fetch_accounts()
+                    total = 0.0
+                    for index,row in enumerate(lists):
+                        category_treeview.insert('','end',values=[*[index+1],*row])
+                        total += float(row[4])
+                    category_data_label1.configure(text=len(lists))
+                    category_data_label2.configure(text=str(total))
+                except Exception as e:
+                    print(e)
             return
 
         #accounting Transaction setup Function
@@ -1481,20 +1456,14 @@ def build_accounting_page():
             transaction_label_frame.grid_forget()
             transaction_button_frame.grid(column=0,row=0,sticky='nsew')
             transaction_data_frame.grid_forget()
-            transaction_id = transaction_treeview.get_children()
-            transaction_temp_list = [transaction_treeview.item(item,'values')[1] for item in transaction_id]
-            if len(transaction_id) < 1:
-                return
-            status, data = api.offline_update_transaction(transaction_temp_list,transaction_error_msg)
-            if status:
-                for item in transaction_id:
-                    transaction_treeview.delete(item)
-                for item in data:
-                    transaction_treeview.insert('','end',values=item)
 
+            transaction_treeview.delete(*transaction_treeview.get_children())
+            amount_label.configure(text='0.0')
+            transaction_label.configure(text='0')
+            date_widgets.configure(text='00-00-0000')
+            
         elif targeted_frame == accountingpage_subframe2_frame4:
-            for i in budget_treeview.get_children():
-                budget_treeview.delete(i)
+            budget_treeview.delete(budget_treeview.get_children())
             res = api.offline_budget_fetch()
             for i in res:
                 budget_treeview.insert('','end',values=i)
@@ -1542,11 +1511,11 @@ def build_accounting_page():
 
     #Transactions page
     accountingpage_subframe2_frame2 = Frame(accountingpage_mainframe2,background=light_dark)
-    transaction_treeview, transaction_error_msg,transaction_label_frame,transaction_button_frame,transaction_data_frame = build_accounting_page_transaction(accountingpage_subframe2_frame2)
+    transaction_treeview, transaction_error_msg,transaction_label_frame,transaction_button_frame,transaction_data_frame,func,amount_label,transaction_label,date_widgets = build_accounting_page_transaction(accountingpage_subframe2_frame2)
 
     #Category page
     accountingpage_subframe2_frame3 = Frame(accountingpage_mainframe2,background='white')
-    category_treeview,category_data_label1 = build_accounting_page_category(accountingpage_subframe2_frame3)
+    category_treeview,category_data_label1,category_data_label2 = build_accounting_page_category(accountingpage_subframe2_frame3)
 
     accountingpage_subframe2_frame4 = Frame(accountingpage_mainframe2,background=light_dark)
     budget_treeview,budget_ax1,budget_fg1,budget_ax2,budget_fg2,budget_value,budget_value2,budget_percentagediff,budget_cmb1,budget_cmb2,budget_cmb3,budget_frame1,budget_frame2,budget_frame3 = build_accounting_page_budget(accountingpage_subframe2_frame4)
@@ -1611,7 +1580,7 @@ def build_accounting_page():
 
     #page startup thing so the user see the dashboard as a default
     accountingpage_leftside_button_function(widget_list = [accountingpage_subframe1_label2,accountingpage_subframe1_label3,accountingpage_subframe1_label4,accountingpage_subframe1_label5,accountingpage_subframe1_label6,accountingpage_subframe1_label8],list_fg=text_color, targeted_widget=accountingpage_subframe1_label2,targeted_fg=sub_maincolor, targeted_frame=accountingpage_subframe2_frame1, frame_list=page_list)
-def build_accounting_page_transaction(master):
+def build_accounting_page_transaction(master,call=False):
     def set_custom_combobox_value(widget,error_msg_widget,fetched_widget,setup):
         if not setup:
             widget.set('')
@@ -1628,41 +1597,7 @@ def build_accounting_page_transaction(master):
             widget.configure(values=value)
         except Exception as e:
             error_msg_widget.configure(text=str(e))
-            for children in accountingpage_subframe2_frame2_treeview.get_children():
-                accountingpage_subframe2_frame2_treeview.delete(children)
 
-            if accountingpage_subframe2_frame2_infopage_frame1_combobox1.get() != '': day = int(accountingpage_subframe2_frame2_infopage_frame1_combobox1.get()) 
-            else: day = accountingpage_subframe2_frame2_infopage_frame1_combobox1.get()
-            if accountingpage_subframe2_frame2_infopage_frame1_combobox2.get() != '': month = int(accountingpage_subframe2_frame2_infopage_frame1_combobox2.get())
-            else: month = accountingpage_subframe2_frame2_infopage_frame1_combobox2.get()
-            if accountingpage_subframe2_frame2_infopage_frame1_combobox3.get() != '': year = int(accountingpage_subframe2_frame2_infopage_frame1_combobox3.get())
-            else: year = accountingpage_subframe2_frame2_infopage_frame1_combobox3.get()
-
-            connect = sql.connect('database.db')
-            cursor = connect.cursor()
-
-            if day != '' or month != '' or year != '':
-                query = 'SELECT * FROM transactions WHERE 1=1'
-                params = []
-
-                if day != '':
-                    query += ' AND day = ?'
-                    params.append(day)
-
-                if month != '' :
-                    query += ' AND month = ?'
-                    params.append(month)
-
-                if year != '':
-                    query += ' AND year = ?'
-                    params.append(year)
-
-                cursor.execute(query, params)
-                results = cursor.fetchall()
-
-                for index,i in enumerate(results):
-                    date = '-'.join([str(i[5]),str(i[6]),str(i[7])])
-                    accountingpage_subframe2_frame2_treeview.insert('','end',values=[index+1,i[0],i[1],i[2],i[3],i[4],date,i[8],i[9]])
     def back_button():
         accountingpage_subframe2_frame2_buttonpage.grid_forget()
         accountingpage_subframe2_frame2_infopage_frame2.grid_forget()
@@ -1673,7 +1608,9 @@ def build_accounting_page_transaction(master):
         accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2.configure(state='readonly')
         accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1.configure(state='readonly')
         accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2.configure(state='readonly')
-        accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.configure(state='normal')
+        accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1.configure(state='readonly',values=[])
+        accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2.configure(state='readonly',values=[])
+        accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3.configure(state='readonly')
         accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.configure(state='normal')
         accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.configure(state='normal')
 
@@ -1681,12 +1618,15 @@ def build_accounting_page_transaction(master):
         accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2.set('')
         accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1.set('')
         accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2.set('')
+        accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1.set('')
+        accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2.set('')
+        accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3.set('')
         accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.delete(0,END)
         accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.insert(0,'\u200BEnter here')
-        accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.configure(fg=sub_textcolor)
         accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.delete(0,END)
-        accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.configure(fg=sub_textcolor)
         accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.insert(0,'\u200Beg.1000')
+        accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.configure(fg=sub_textcolor)
+        accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.configure(fg=sub_textcolor)
         accountingpage_subframe2_frame2_treeview.unbind('<<TreeviewSelect>>')
         accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1.configure(values=[])
         accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1.unbind('<<ComboboxSelected>>')
@@ -1705,7 +1645,9 @@ def build_accounting_page_transaction(master):
                 accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2.configure(state='readonly')
                 accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1.configure(state='readonly')
                 accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2.configure(state='readonly')
-                accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.configure(state='normal',fg=text_color)
+                accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1.configure(state='readonly')
+                accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2.configure(state='readonly')
+                accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3.configure(state='readonly')
                 accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.configure(state='normal',fg=text_color)
                 accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.configure(state='normal',fg=text_color)
                 accountingpage_subframe2_frame2_infopage_frame2.grid_forget()
@@ -1713,17 +1655,19 @@ def build_accounting_page_transaction(master):
                 accountingpage_subframe2_frame2_buttonpage.grid(column=0,row=0,sticky='nsew')
 
                 treeview_values = accountingpage_subframe2_frame2_treeview.item(value,'values')
-                accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1.set(treeview_values[2])
-                accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2.set(treeview_values[3])
-                accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1.set(treeview_values[4])
-                accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2.set(treeview_values[5])
-                accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.delete(0,END)
-                accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.insert(0,treeview_values[6])
+                accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1.set(treeview_values[1])
+                accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2.set(treeview_values[2])
+                accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1.set(treeview_values[3])
+                accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2.set(treeview_values[4])
+                date = treeview_values[5].split('-')
+                accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1.set(date[0])
+                accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2.set(date[1])
+                accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3.set(date[2])
                 accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.delete(0,END)
-                accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.insert(0,treeview_values[7])
+                accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.insert(0,treeview_values[6])
                 accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.delete(0,END)
-                accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.insert(0,treeview_values[8])
-                state.treeview_id = treeview_values[1]
+                accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.insert(0,treeview_values[7])
+                state.treeview_id = treeview_values[0]
 
 
                 set_custom_combobox_value(accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2,accountingpage_subframe2_frame2_messages_label1,accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1,True)
@@ -1735,7 +1679,9 @@ def build_accounting_page_transaction(master):
                     accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2.configure(state='disabled')
                     accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1.configure(state='disabled')
                     accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2.configure(state='disabled')
-                    accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.configure(state='disabled')
+                    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1.configure(state='disabled')
+                    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2.configure(state='disabled')
+                    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3.configure(state='disabled')
                     accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.configure(state='disabled')
                     accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.configure(state='disabled')
         if getattr(state,'is_online') == False:
@@ -1801,172 +1747,59 @@ def build_accounting_page_transaction(master):
     def button_page_command(type_of_command = str ):
         if getattr(state,'is_online') == False:
             if type_of_command == 'add':
-                is_success, data = api.offline_add_entry(accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2,accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2,accountingpage_subframe2_frame2_messages_label1,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2)
+                dates = f'{accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1.get()}-{accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2.get()}-{accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3.get()}'
+                is_success, data = api.offline_add_entry(accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2,accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2,accountingpage_subframe2_frame2_messages_label1,dates,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2)
                 if is_success:
-                    number = len(accountingpage_subframe2_frame2_treeview.get_children()) + 1
-                    accountingpage_subframe2_frame2_treeview.insert('','end',values=[*[number],*data])
-                    reset()
+                    accountingpage_subframe2_frame2_treeview.insert('','end',values=data)
+                    try:
+                        num = float(accountingpage_subframe2_frame2_infopage_label3.cget('text')) + float(accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.get())
+                        accountingpage_subframe2_frame2_infopage_label3.configure(text=str(num))
+                        count = int(accountingpage_subframe2_frame2_infopage_label5.cget('text')) + 1
+                        accountingpage_subframe2_frame2_infopage_label5.configure(text=str(count))
+                    except Exception as e:
+                        print(str(e))
                     to_button_page('add')
 
             if type_of_command == 'remove':
                 is_success = api.offline_remove_entry(error_msg_widget=accountingpage_subframe2_frame2_messages_label1,ids=int(state.treeview_id))
                 if is_success:
+                    accountingpage_subframe2_frame2_treeview.delete(state.treeview_selected_row)
+                    try:
+                        num = float(accountingpage_subframe2_frame2_infopage_label3.cget('text')) - float(accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.get())
+                        accountingpage_subframe2_frame2_infopage_label3.configure(text=str(num))
+                        count = int(accountingpage_subframe2_frame2_infopage_label5.cget('text')) - 1
+                        accountingpage_subframe2_frame2_infopage_label5.configure(text=str(count))
+                    except Exception as e:
+                        print(str(e))
                     to_button_page('remove')
-                    new_list = []
-                    for item in accountingpage_subframe2_frame2_treeview.get_children():
-                        if item != state.treeview_selected_row:
-                            new_list.append(accountingpage_subframe2_frame2_treeview.item(item,'values'))
-                        accountingpage_subframe2_frame2_treeview.delete(item)
-                    
-                    for i,value in enumerate(new_list):
-                        edited_list = value[1:]
-                        accountingpage_subframe2_frame2_treeview.insert('','end',values=[*[i],*edited_list])
 
             if type_of_command == 'edit':
-                is_success, data = api.offline_edit_entry(state.treeview_id,accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2,accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2,accountingpage_subframe2_frame2_messages_label1,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2,search_return_list=True)
+                dates = f'{accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1.get()}-{accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2.get()}-{accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3.get()}'
+                is_success, data = api.offline_edit_entry(state.treeview_id,accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2,accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1,accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2,accountingpage_subframe2_frame2_messages_label1,dates,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3,accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2,search_return_list=True)
                 if is_success:
-                    to_button_page('edit')
                     value = accountingpage_subframe2_frame2_treeview.item(state.treeview_selected_row,'values')
-                    accountingpage_subframe2_frame2_treeview.item(state.treeview_selected_row,values=[*value[:2], *data])
+                    try:
+                        num = float(accountingpage_subframe2_frame2_infopage_label3.cget('text')) - float(value[8]) + float(accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.get())
+                        accountingpage_subframe2_frame2_infopage_label3.configure(text=str(num))
+                    except Exception as e:
+                        print(str(e))
+
+                    accountingpage_subframe2_frame2_treeview.item(state.treeview_selected_row,values=data)
+                    to_button_page('edit')
 
             if type_of_command == 'search':
-                from_type = accountingpage_subframe2_frame2_buttonpage_labelframe1_entry1.get()
-                from_account = accountingpage_subframe2_frame2_buttonpage_labelframe1_entry2.get()
-                to_type = accountingpage_subframe2_frame2_buttonpage_labelframe2_entry1.get()
-                to_account = accountingpage_subframe2_frame2_buttonpage_labelframe2_entry2.get()
-                date = accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.get()
-                description  = accountingpage_subframe2_frame2_buttonpage_labelframe3_entry2.get()
-                amount = accountingpage_subframe2_frame2_buttonpage_labelframe3_entry3.get()
+                
+    def calculate_dataframe(setup=False):
+        index = 10 if setup else 8
+        total = 0.0
 
-                param_dict = {}
+        for i in accountingpage_subframe2_frame2_treeview.get_children():
+            vals = accountingpage_subframe2_frame2_treeview.item(i, "values")
+            if len(vals) > 7:
+                total += float(vals[index])
 
-                if from_type != '':
-                    param_dict.update({
-                        'from_account_type': {
-                            'widget_data' : from_type,
-                            'type' : str
-                        }
-                    })
-
-                if from_account != '':
-                    param_dict.update({
-                        'from_account': {
-                            'widget_data' : from_account,
-                            'type' : str
-                        }
-                    })
-
-                if to_type != '':
-                    param_dict.update({
-                        'to_account_type': {
-                            'widget_data' : to_type,
-                            'type' : str
-                        }
-                    })
-
-                if to_account != '':
-                    param_dict.update({
-                        'to_account': {
-                            'widget_data' : to_account,
-                            'type' : str
-                        }
-                    })
-
-                if date != '\u200bDD-MM-YY' and date != '':
-                    date_list = date.split('-')
-                    if 0 < len(date_list) < 3 :
-                        accountingpage_subframe2_frame2_messages_label1.configure(text='The date is in the wrong format')
-                        return False
-
-                    if date_list[0] != '00' and date_list[0] != '0':
-                        try:
-                            day = int(date_list[0])
-                            if day < 0 or day > 31:
-                                accountingpage_subframe2_frame2_messages_label1.configure(text='Invalid Day Number')
-                                return False
-                        except Exception:
-                            accountingpage_subframe2_frame2_messages_label1.configure(text='Invalid Day Number')
-                            return False
-                        
-                        param_dict.update({
-                            'day' : {
-                                'widget_data' : day,
-                                'type' : int
-                            }
-
-                        })
-
-                    if date_list[1] != '00' and date_list[1] != '0':
-                        try:
-                            month = int(date_list[1])
-                            if month < 0 or month > 12:
-                                accountingpage_subframe2_frame2_messages_label1.configure(text='Invalid Month Number')
-                                return False
-                        except Exception:
-                            accountingpage_subframe2_frame2_messages_label1.configure(text='Invalid Month Number')
-                            return False
-                        
-                        param_dict.update({
-                            'month' : {
-                                'widget_data' : month,
-                                'type' : int
-                            }
-
-                        })
-
-                    if date_list[2] != '0000':
-                        try:
-                            datetime.strptime(date_list[2],'%Y')
-                        except Exception:
-                            accountingpage_subframe2_frame2_messages_label1.configure(text='Invalid Year Number')
-                            return False
-                        
-                        param_dict.update({
-                            'year' : {
-                                'widget_data' : date_list[2],
-                                'type' : int
-                            }
-
-                        })
-
-
-                if description != '\u200BEnter here' and description != '':
-                    param_dict.update({
-                        'description': {
-                            'widget_data' : description,
-                            'type' : str
-                        }
-                    })
-
-                if amount != '\u200beg.1000' and amount != '':
-                    param_dict.update({
-                        'amount': {
-                            'widget_data' : amount,
-                            'type' : int
-                        }
-                    })
-
-                api.offline_set_treeview_with_params(accountingpage_subframe2_frame2_treeview,param_dict=param_dict)
-                accountingpage_subframe2_frame2_messages_label1.configure(fg=success_color,text='Sucessfully searched in Transactions')
-                window.after(3000,lambda:accountingpage_subframe2_frame2_messages_label1.configure(fg=error_color,text=''))
-
-    def calendar_search_function(event):
-        date_search_dict_param = {
-            'day':{
-                'widget_data' : accountingpage_subframe2_frame2_infopage_frame1_combobox1.get(),
-                'type' : int
-            },
-            'month' : {
-                'widget_data' : accountingpage_subframe2_frame2_infopage_frame1_combobox2.get(),
-                'type' : int
-            },
-            'year' : {
-                'widget_data' : accountingpage_subframe2_frame2_infopage_frame1_combobox3.get(),
-                'type' : int
-            },
-        }
-
-        api.offline_set_treeview_with_params(accountingpage_subframe2_frame2_treeview,date_search_dict_param)
+        accountingpage_subframe2_frame2_infopage_label3.configure(text=str(total))
+        accountingpage_subframe2_frame2_infopage_label5.configure(text=str(len(accountingpage_subframe2_frame2_treeview.get_children())))
 
     accountingpage_subframe2_frame2_transactionpage = Frame(master, background=sub_lightdark)
     accountingpage_subframe2_frame2_transactionpage.grid(column=0,row=0,sticky='nsew')
@@ -1974,12 +1807,9 @@ def build_accounting_page_transaction(master):
     accountingpage_subframe2_frame2_scrollbar = ttk.Scrollbar(accountingpage_subframe2_frame2_transactionpage)
     accountingpage_subframe2_frame2_scrollbar.pack(side='right',fill='y',pady=(0,5))
 
-    headings = ('No.','ID','From','From2','To','To2','Date','Description','Amount')
+    headings = ('ID','From','From2','To','To2','Date','Description','Amount')
     accountingpage_subframe2_frame2_treeview = ttk.Treeview(accountingpage_subframe2_frame2_transactionpage,columns=headings, show='headings',yscrollcommand=accountingpage_subframe2_frame2_scrollbar,selectmode='browse')
     accountingpage_subframe2_frame2_scrollbar.configure(command=accountingpage_subframe2_frame2_treeview.yview)
-
-    accountingpage_subframe2_frame2_treeview.column('No.',anchor='w',stretch=True,minwidth=30,width=30)
-    accountingpage_subframe2_frame2_treeview.heading('No.', text = 'No.')
 
     accountingpage_subframe2_frame2_treeview.column('ID',anchor='w',stretch=True,minwidth=30,width=30)
     accountingpage_subframe2_frame2_treeview.heading('ID', text = 'ID')
@@ -2038,70 +1868,45 @@ def build_accounting_page_transaction(master):
     accountingpage_subframe2_frame2_infopage_dataframe = Frame(accountingpage_subframe2_frame2_infopage_leftframe, background=sub_lightdark,height=310,width=700)
     accountingpage_subframe2_frame2_infopage_dataframe.grid_propagate(False)
     accountingpage_subframe2_frame2_infopage_dataframe.grid(column=0,row=0,sticky='nsew')
-    accountingpage_subframe2_frame2_infopage_dataframe.grid_columnconfigure((0,5),weight=1)
-    accountingpage_subframe2_frame2_infopage_dataframe.grid_rowconfigure((0,1,2,3),weight=1)
+    accountingpage_subframe2_frame2_infopage_dataframe.grid_columnconfigure([0,1],weight=1)
+    accountingpage_subframe2_frame2_infopage_dataframe.grid_rowconfigure(0,weight=1)
 
-    accountingpage_subframe2_frame2_infopage_label1 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='Date', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_labelframe2 = LabelFrame(accountingpage_subframe2_frame2_infopage_dataframe,text='Table Data',background=sub_lightdark,font=(custom_font,20,'bold'),fg=text_color)
+    accountingpage_subframe2_frame2_infopage_labelframe2.grid(column=0,row=0,sticky='nsew',pady=(0,5),padx=[0,5])
+
+    accountingpage_subframe2_frame2_infopage_label1 = Label(accountingpage_subframe2_frame2_infopage_labelframe2, text='Date', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame2_infopage_label1.grid(column=0,row=0,sticky='nsw',pady=5,padx=[3,0])
-    accountingpage_subframe2_frame2_infopage_equal1 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_equal1 = Label(accountingpage_subframe2_frame2_infopage_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame2_infopage_equal1.grid(column=1,row=0,sticky='nsew',pady=5)
-    accountingpage_subframe2_frame2_infopage_frame1 = Frame(accountingpage_subframe2_frame2_infopage_dataframe,background=sub_lightdark)
-    accountingpage_subframe2_frame2_infopage_frame1_combobox1 = ttk.Combobox(accountingpage_subframe2_frame2_infopage_frame1, background = light_dark, foreground = text_color,font=('monogram',20),state='readonly',width=5,values=[''] + list(range(1,32)))
-    accountingpage_subframe2_frame2_infopage_frame1_combobox1.grid(column=0,row=0,sticky='ew')
-    accountingpage_subframe2_frame2_infopage_frame1_combobox2 = ttk.Combobox(accountingpage_subframe2_frame2_infopage_frame1, background = light_dark, foreground = text_color,font=('monogram',20),state='readonly',width=10,values =[''] +  list(range(1,13)))
-    accountingpage_subframe2_frame2_infopage_frame1_combobox2.grid(column=1,row=0,sticky='ew',padx=5)
-    accountingpage_subframe2_frame2_infopage_frame1_combobox3 = ttk.Combobox(accountingpage_subframe2_frame2_infopage_frame1, background = light_dark, foreground = text_color,font=('monogram',20),state='readonly',width=5, values= [''] + [str(y) for y in range(2000, date.today().year + 1)])
-    accountingpage_subframe2_frame2_infopage_frame1_combobox3.grid(column=2,row=0,sticky='ew')
+    accountingpage_subframe2_frame2_infopage_label1s = Label(accountingpage_subframe2_frame2_infopage_labelframe2, text='00-00-0000', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_label1s.grid(column=2,row=0,sticky='nsw',pady=5,padx=[3,0])
 
-    #Set the current date as default
-    current_date = datetime.today().strftime('%d/%m/%Y').split('/')
-    accountingpage_subframe2_frame2_infopage_frame1_combobox1.set(current_date[0])
-    accountingpage_subframe2_frame2_infopage_frame1_combobox2.set(current_date[1])
-    accountingpage_subframe2_frame2_infopage_frame1_combobox3.set(current_date[2])
-    
-    accountingpage_subframe2_frame2_infopage_frame1_combobox1.bind('<<ComboboxSelected>>', calendar_search_function)
-    accountingpage_subframe2_frame2_infopage_frame1_combobox2.bind('<<ComboboxSelected>>', calendar_search_function)
-    accountingpage_subframe2_frame2_infopage_frame1_combobox3.bind('<<ComboboxSelected>>', calendar_search_function)
-
-    accountingpage_subframe2_frame2_infopage_frame1.grid_columnconfigure([0,2], weight=1)
-    accountingpage_subframe2_frame2_infopage_frame1.grid_columnconfigure(1, weight=2)
-    accountingpage_subframe2_frame2_infopage_frame1.grid_rowconfigure(0,weight=1)
-    accountingpage_subframe2_frame2_infopage_frame1.grid(column=2,row=0,sticky='nsew',pady=5, padx=[0,5])
-
-    accountingpage_subframe2_frame2_infopage_label2 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='Total Income', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_label2 = Label(accountingpage_subframe2_frame2_infopage_labelframe2, text='Total Amount Displayed', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame2_infopage_label2.grid(column=0,row=1,sticky='nsw',pady=(0,5),padx=[3,0])
-    accountingpage_subframe2_frame2_infopage_equal2 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_equal2 = Label(accountingpage_subframe2_frame2_infopage_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame2_infopage_equal2.grid(column=1,row=1,sticky='nsew',pady=5)
-    accountingpage_subframe2_frame2_infopage_label3 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='0', background=sub_lightdark, fg='#2ECC71',font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_label3 = Label(accountingpage_subframe2_frame2_infopage_labelframe2, text='0', background=sub_lightdark, fg=text_color,font=('monogram',20,'bold'))
     accountingpage_subframe2_frame2_infopage_label3.grid(column=2,row=1,sticky='nsw',pady=(0,5))    
     
-    accountingpage_subframe2_frame2_infopage_label4 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='Total Expenses', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_label4 = Label(accountingpage_subframe2_frame2_infopage_labelframe2, text='Total Row Displayed', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame2_infopage_label4.grid(column=0,row=2,sticky='nsw',pady=(0,5),padx=[3,0])
-    accountingpage_subframe2_frame2_infopage_equal3 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_equal3 = Label(accountingpage_subframe2_frame2_infopage_labelframe2, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame2_infopage_equal3.grid(column=1,row=2,sticky='nsew',pady=5)
-    accountingpage_subframe2_frame2_infopage_label5 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='0', background=sub_lightdark, fg='#E57373',font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_label5 = Label(accountingpage_subframe2_frame2_infopage_labelframe2, text='0', background=sub_lightdark, fg=text_color,font=('monogram',20,'bold'))
     accountingpage_subframe2_frame2_infopage_label5.grid(column=2,row=2,sticky='nsw',pady=(0,5))    
 
-    accountingpage_subframe2_frame2_infopage_label6 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='Net Balance', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame2_infopage_label6.grid(column=0,row=3,sticky='nsw',pady=(0,5),padx=[3,0])
-    accountingpage_subframe2_frame2_infopage_equal4 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame2_infopage_equal4.grid(column=1,row=3,sticky='nsew',pady=5)
-    accountingpage_subframe2_frame2_infopage_label7 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='0', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame2_infopage_label7.grid(column=2,row=3,sticky='nsw',pady=(0,5))    
+    accountingpage_subframe2_frame2_infopage_labelframe1 = LabelFrame(accountingpage_subframe2_frame2_infopage_dataframe,text='Explanation',background=sub_lightdark,font=(custom_font,20,'bold'),fg=text_color)
+    accountingpage_subframe2_frame2_infopage_labelframe1.grid(column=1,row=0,sticky='nsew',pady=(0,5),padx=[0,5])
 
-    accountingpage_subframe2_frame2_infopage_label8 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='Current Balance', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame2_infopage_label8.grid(column=3,row=0,sticky='nsw',pady=(0,5),padx=(3,0))
-    accountingpage_subframe2_frame2_infopage_equal5 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame2_infopage_equal5.grid(column=4,row=0,sticky='nsew',pady=5)
-    accountingpage_subframe2_frame2_infopage_label9 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='0', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame2_infopage_label9.grid(column=5,row=0,sticky='nsw',pady=(0,5))   
+    accountingpage_subframe2_frame2_infopage_labelframe1_label1 = Label(accountingpage_subframe2_frame2_infopage_labelframe1, text=' - Use Date or Search to show Transaction Logs', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_labelframe1_label1.pack(side='top',anchor='w',pady=[0,5])
 
-    accountingpage_subframe2_frame2_infopage_label10 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='Total Transactions', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame2_infopage_label10.grid(column=3,row=1,sticky='nsw',pady=(0,5),padx=(3,0))
-    accountingpage_subframe2_frame2_infopage_equal6 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame2_infopage_equal6.grid(column=4,row=1,sticky='nsew',pady=5)
-    accountingpage_subframe2_frame2_infopage_label11 = Label(accountingpage_subframe2_frame2_infopage_dataframe, text='0', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame2_infopage_label11.grid(column=5,row=1,sticky='nsw',pady=(0,5))   
+    accountingpage_subframe2_frame2_infopage_labelframe1_label1 = Label(accountingpage_subframe2_frame2_infopage_labelframe1, text=' - Account is tied to transactions', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_labelframe1_label1.pack(side='top',anchor='w',pady=[0,5])
+
+    accountingpage_subframe2_frame2_infopage_labelframe1_label1 = Label(accountingpage_subframe2_frame2_infopage_labelframe1, text=' - Further help is at the README file ', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame2_infopage_labelframe1_label1.pack(side='top',anchor='w',pady=[0,5])
+    Label(accountingpage_subframe2_frame2_infopage_labelframe1, text=' - IT is NOT recomended to have\n   Transaction row > 10000 on display', background=sub_lightdark, fg=text_color,font=('monogram',20),justify='left').pack(side='top',anchor='w',pady=[0,5])
 
     #Add / remove/ edit page
     #The Label to make the user pick got remove / edit
@@ -2116,7 +1921,6 @@ def build_accounting_page_transaction(master):
     #Foundation Frame
     accountingpage_subframe2_frame2_buttonpage = Frame(accountingpage_subframe2_frame2_infopage_leftframe, background=sub_lightdark,height=310,width=700)
     accountingpage_subframe2_frame2_buttonpage.grid_propagate(False)
-    accountingpage_subframe2_frame2_buttonpage
     accountingpage_subframe2_frame2_buttonpage.grid_rowconfigure([0,1],weight=1)
     accountingpage_subframe2_frame2_buttonpage.grid_columnconfigure([0,1],weight=1,uniform='a')
 
@@ -2178,11 +1982,17 @@ def build_accounting_page_transaction(master):
     accountingpage_subframe2_frame2_buttonpage_labelframe3_label1.grid(column=0,row=0,sticky='nw',pady=5)
     accountingpage_subframe2_frame2_buttonpage_labelframe3_equal1 = Label(accountingpage_subframe2_frame2_buttonpage_labelframe3, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame2_buttonpage_labelframe3_equal1.grid(column=1,row=0,sticky='nw',pady=5)
-    accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1 = Entry(accountingpage_subframe2_frame2_buttonpage_labelframe3, background = light_dark, fg = text_color,font=('monogram',20),disabledbackground=light_dark,disabledforeground=text_color)
-    accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.insert(0,datetime.today().strftime('%d-%m-%Y'))
-    accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.bind('<FocusIn>', lambda event: entry_text(accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1,['\u200BDD-MM-YY']))
-    accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.bind('<FocusOut>', lambda event: entry_text(accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1,['\u200BDD-MM-YY'],True,'\u200BDD-MM-YY'))
-    accountingpage_subframe2_frame2_buttonpage_labelframe3_entry1.grid(column=2,row=0,sticky='new',pady=5,padx=[0,5])
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1 = Frame(accountingpage_subframe2_frame2_buttonpage_labelframe3,background=sub_lightdark)
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1.grid(column=2,row=0,sticky='new',pady=5,padx=[0,5])
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1 = ttk.Combobox(accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1, background = light_dark, foreground = text_color,font=('monogram',20),state='readonly',justify='left',width=5)
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1.pack(side='left')
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2 = ttk.Combobox(accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1, background = light_dark, foreground = text_color,font=('monogram',20),state='readonly',justify='left',width=5)
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2.pack(side='left',padx=5)
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3 = ttk.Combobox(accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1, background = light_dark, foreground = text_color,font=('monogram',20),state='readonly',justify='left',width=7)
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3.pack(side='left')
+    combobox_date_set_year(accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3)
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3.bind('<<ComboboxSelected>>', lambda e: [combobox_date(accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1,accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2,accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3,select='year')])
+    accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2.bind('<<ComboboxSelected>>', lambda e: [combobox_date(accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox1,accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox2,accountingpage_subframe2_frame2_buttonpage_labelframe3_frame1_combobox3,select='month')])
 
     accountingpage_subframe2_frame2_buttonpage_labelframe3_label2 = Label(accountingpage_subframe2_frame2_buttonpage_labelframe3, text='Description', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame2_buttonpage_labelframe3_label2.grid(column=0,row=1,sticky='nw',pady=5)
@@ -2251,7 +2061,7 @@ def build_accounting_page_transaction(master):
     master.grid_rowconfigure(0,weight=1)
     master.grid_rowconfigure([1,2],weight=0)
     master.grid_columnconfigure(0,weight=1)
-    return accountingpage_subframe2_frame2_treeview, accountingpage_subframe2_frame2_messages_label1,accountingpage_subframe2_frame2_infopage_frame2,accountingpage_subframe2_frame2_infopage_dataframe,accountingpage_subframe2_frame2_buttonpage
+    return accountingpage_subframe2_frame2_treeview, accountingpage_subframe2_frame2_messages_label1,accountingpage_subframe2_frame2_infopage_frame2,accountingpage_subframe2_frame2_infopage_dataframe,accountingpage_subframe2_frame2_buttonpage,calculate_dataframe,accountingpage_subframe2_frame2_infopage_label3,accountingpage_subframe2_frame2_infopage_label5,accountingpage_subframe2_frame2_infopage_label1s
 def build_accounting_page_category(master):
     def reset_button_page():
         accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.unbind('<<TreeviewSelect>>')
@@ -2350,21 +2160,61 @@ def build_accounting_page_category(master):
                     else:
                         result_frame1_button2.configure(command=confirm_button_edit)
             def confirm_button_delete():
-                result.destroy()
-                api.offline_remove_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.item(state.treeview_selected_row_account,'values')[1],accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1)
-                accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.delete(state.treeview_selected_row_account)
+                # Grab the account_id before threading
+                account_id = accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.item(
+                    state.treeview_selected_row_account, 'values'
+                )[1]
 
-                status, new_lists = api.offline_update_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
+                def worker():
+                    # Run heavy DB delete here
+                    api.offline_remove_account(
+                        account_id,
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1,
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1
+                    )
+
+                    # Once done, update UI safely back in main thread
+                    master.after(0, finish_delete_ui)
+
+                Thread(target=worker, daemon=True).start()
+
+
+            def finish_delete_ui():
+                result.destroy()
+                tree = accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview
+
+                # Remove from treeview
+                tree.delete(state.treeview_selected_row_account)
+
+                # Update account list
+                status, new_lists = api.offline_update_account(
+                    tree,
+                    accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1
+                )
 
                 if status:
-                    for row in accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children():
-                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.delete(row)
+                    # Clear and repopulate
+                    for row in tree.get_children():
+                        tree.delete(row)
 
                     for i, value in enumerate(new_lists):
                         input_list = (i + 1,) + value
-                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values=input_list)
+                        tree.insert('', 'end', values=input_list)
 
-                master.after(0,lambda :[to_button_page('remove'),master.update_idletasks()])
+                    # Update labels
+                    try:
+                        num = float(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2.cget('text')) - float(
+                            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe2_label4.cget('text')
+                        )
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2.configure(text=str(num))
+
+                        count = int(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label4.cget('text')) - 1
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label4.configure(text=str(count))
+                    except Exception as e:
+                        print("UI update error:", e)
+
+                # Refresh button page
+                window.after(0, lambda: [to_button_page('remove'), master.update_idletasks()])
             def confirm_button_edit():
                 result.destroy()
                 values = list(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.item(state.treeview_selected_row_account,'values'))
@@ -2440,6 +2290,12 @@ def build_accounting_page_category(master):
                 status, data = api.offline_add_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
                 if status:
                     accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values=([len(accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children())+1] + data))
+                    try:
+                        count = int(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label4.cget('text')) + 1
+                        accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label4.configure(text=str(count))
+                    except Exception as e:
+                        print(str(e))
+
                     to_button_page('add')
 
             if type_of_command == 'remove':
@@ -2449,14 +2305,38 @@ def build_accounting_page_category(master):
                 warning_message('edit')
 
             if type_of_command == 'search':
-                status, data = api.offline_search_account(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1)
-                if status:
-                    for row in accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.get_children():
-                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.delete(row)
+                def search_account():
+                    def worker():
+                        status, data = api.offline_search_account(
+                            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_combobox1,
+                            accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3_labelframe1_entry1,
+                            accountingpage_subframe2_frame3_categorypage_leftframe_frame2_label1
+                        )
+                        master.after(0, lambda: update_treeview_with_search(status, data))
 
-                    for index,value in enumerate(data):
-                        added_list = (index+1,) + value
-                        accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview.insert('','end',values=added_list)
+                    Thread(target=worker, daemon=True).start()
+
+
+                def update_treeview_with_search(status, data):
+                    tree = accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview
+                    if status:
+                        # Clear old rows
+                        for row in tree.get_children():
+                            tree.delete(row)
+
+                        # Insert in chunks (to avoid freezing UI with huge datasets)
+                        def insert_chunk(start=0, chunk_size=500):
+                            end = min(start + chunk_size, len(data))
+                            for index, value in enumerate(data[start:end], start=start):
+                                added_list = (index + 1,) + value
+                                tree.insert('', 'end', values=added_list)
+
+                            if end < len(data):
+                                master.after(1, insert_chunk, end)  # schedule next chunk
+
+                        insert_chunk()
+
+                search_account()
 
     def back_button():
         for frame in [accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2,accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame3]:
@@ -2536,26 +2416,20 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1.grid_columnconfigure(2,weight=1)
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1.pack(side='top',fill='both',expand=1,pady=3,padx=[3,0])
 
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='Accounts in Table', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='Total Amount Displayed', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label1.grid(column=0,row=0,sticky='nw',pady=5,padx=[3,0])
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_equal1 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_equal1.grid(column=1,row=0,sticky='nw',pady=5)
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='Bing Bong', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='0', background=sub_lightdark, fg=text_color,font=('monogram',20,'bold'))
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2.grid(column=2,row=0,sticky='nw',pady=5)
 
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label3 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='Highest Transaction Log', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label3 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='Total Account Displayed', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label3.grid(column=0,row=1,sticky='nw',pady=5,padx=[3,0])
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_equal2 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_equal2.grid(column=1,row=1,sticky='nw',pady=5)
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label4 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='Bing Bong', background=sub_lightdark, fg=text_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label4 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='0', background=sub_lightdark, fg=text_color,font=('monogram',20,'bold'))
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label4.grid(column=2,row=1,sticky='nw',pady=5)
 
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label5 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='Lowest Transaction Log', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label5.grid(column=0,row=2,sticky='nw',pady=5,padx=[3,0])
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_equal3 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text=':', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_equal3.grid(column=1,row=2,sticky='nw',pady=5)
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label6 = Label(accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1, text='Bing Bong', background=sub_lightdark, fg=text_color,font=('monogram',20))
-    accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label6.grid(column=2,row=2,sticky='nw',pady=5)
 
     #Please choose to pick Frame
     accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame2 = Frame(accountingpage_subframe2_frame3_categorypage_leftframe_frame3, background=light_dark)
@@ -2718,7 +2592,7 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1 = Frame(accountingpage_subframe2_frame3_categorypage_rightframe_frame1, background=sub_lightdark)
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1.grid(column=0,row=0,sticky='nsew',padx=3,pady=3)
 
-    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1, text='Hello im testing', background=sub_lightdark, fg=error_color,font=('monogram',20))
+    accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1 = Label(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1, text='', background=sub_lightdark, fg=error_color,font=('monogram',20))
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame1_label1.pack(side='left',anchor='w')
 
     #Data Frame
@@ -2807,7 +2681,7 @@ def build_accounting_page_category(master):
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button2 = Button(accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1,text='Clear Graph',background=light_dark,fg=text_color,font=(custom_font,20), command = clear_graph_plot)
     accountingpage_subframe2_frame3_categorypage_rightframe_frame1_frame2_frame1_button2.grid(column=0,row=0,sticky='nsew')
 
-    return accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview, accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2
+    return accountingpage_subframe2_frame3_categorypage_leftframe_frame1_treeview, accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label4, accountingpage_subframe2_frame3_categorypage_leftframe_frame3_frame1_labelframe1_label2
 def build_accounting_page_budget(master):
     def set_custom_combobox_value(widget,fetched_widget,setup):
         if not setup:
@@ -2993,9 +2867,11 @@ def build_accounting_page_budget(master):
 
     def back_button():
         reset_button_page()
+        accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3.configure(text='Explanation')
         accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3_frame1.pack(side='top',fill='both',expand=1)
     def to_button_page(type_of_command = str in ['add','remove','edit','search']):
         if getattr(state,'is_online') == False:
+            accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3.configure(text='Configuration')
             if type_of_command == 'add':
                 reset_button_page()
                 accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3_frame1.pack_forget()
@@ -3036,7 +2912,6 @@ def build_accounting_page_budget(master):
                 if status:
                     index = len(accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.get_children())
                     accountingpage_subframe2_frame4_canvas_frame1_frame1_treeview1.insert('','end',values=[index+1,*res,0,0])
-                    window.update_idletasks()
                     graph_and_table_plotting()
                     to_button_page('add')
                 
@@ -3152,7 +3027,7 @@ def build_accounting_page_budget(master):
     accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame1 = Frame(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1,background=sub_lightdark)
     accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame1.grid(column=0,row=0,sticky='nsew',padx=3,pady=3)
 
-    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_label1 = Label(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame1,fg=error_color,background=sub_lightdark,font=(custom_font,20),text='Hello test')
+    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_label1 = Label(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame1,fg=error_color,background=sub_lightdark,font=(custom_font,20),text='')
     accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_label1.pack(side='left')
 
     #FRAME 1 BUTTON FRAME
@@ -3215,7 +3090,6 @@ def build_accounting_page_budget(master):
     accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3.grid(column=2,row=0,sticky='nsew',padx=3,rowspan=2,pady=[0,5])
 
     accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3_frame1 = Frame(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3,background=sub_lightdark)
-    accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3_frame1
 
     accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3_frame1_label1 = Label(accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3_frame1, text=' - Use Date to see budget status', background=sub_lightdark, fg=text_color,font=('monogram',20))
     accountingpage_subframe2_frame4_canvas_frame1_frame1_frame1_frame2_labelframe3_frame1_label1.grid(column=0,row=0,sticky='nsw',pady=[5,0])
@@ -3936,12 +3810,12 @@ def stress_test():
     cursor = connect.cursor()
     cursor.execute('PRAGMA foreign_keys = ON')
     dates = date(2022,8,1)
-    for i in range(1000):
+    for i in range(100000):
         ints = random.randint(10,100)
         current_date = dates + timedelta(days=i)
         date_str = current_date.strftime("%d-%m-%Y")
         date_list = date_str.split('-')
-        cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',['revenue','income','assets','cash',date_list[0],date_list[1],date_list[2],'STRESS TEST',ints])
+        cursor.execute('INSERT INTO transactions (from_account_type, from_account, to_account_type, to_account, day, month, year, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',['assets','cash','expenses','groceries',date_list[0],date_list[1],date_list[2],'STRESS TEST',ints])
 
     connect.commit()
     connect.close()
